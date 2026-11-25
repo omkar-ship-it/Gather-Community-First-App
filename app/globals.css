@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+/* Plum, marigold, coral. Not a messenger's green or blue: this is a place, not an inbox. */
+:root {
+  --bg: #f7f4f6;
+  --card: #ffffff;
+  --ink: #1e1020;
+  --soft: #756876;
+  --line: #e9e2e7;
+  --sunk: #f0eaee;
+  --brand: #6b1d4f;
+  --brand-soft: #f6e6ef;
+  --sun: #ffb627;
+  --live: #e8452f;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  color-scheme: light;
+}
+@theme inline {
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-digits);
+}
+* { -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body { margin: 0; background: #e6dee4; color: var(--ink); font-family: var(--font-ui), system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+button { cursor: pointer; }
+button:disabled { cursor: default; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+input, textarea { font: inherit; color: inherit; }
+
+.digits { font-family: var(--font-digits), ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+/* The device: full-bleed on a phone, a framed handset on anything wider. */
+.stage { min-height: 100dvh; display: grid; place-items: center; }
+.device { position: relative; width: 100%; height: 100dvh; overflow: hidden; background: var(--bg); }
+@media (min-width: 640px) {
+  .stage { padding: 24px; grid-template-columns: auto; gap: 48px; }
+  .device { width: 402px; height: min(860px, calc(100dvh - 48px)); border-radius: 44px; box-shadow: 0 0 0 10px #1e1020, 0 40px 80px -30px rgba(30, 16, 32, 0.55); }
+}
+@media (min-width: 980px) { .stage { grid-template-columns: 402px 300px; justify-content: center; } }
+
+.scroll { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.scroll::-webkit-scrollbar { display: none; }
+.press { transition: transform 0.18s var(--ease); }
+.press:active { transform: scale(0.97); }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 50px; padding: 0 22px; border-radius: 16px; font-weight: 600; font-size: 16px; transition: transform 0.18s var(--ease), opacity 0.2s; }
+.btn:active { transform: scale(0.98); }
+.btn:disabled { opacity: 0.38; }
+.btn-main { background: var(--brand); color: #fff; }
+.btn-sun { background: var(--sun); color: var(--ink); }
+.btn-quiet { background: var(--sunk); color: var(--ink); }
+.field { width: 100%; min-height: 52px; padding: 12px 16px; border-radius: 16px; background: var(--card); border: 1.5px solid var(--line); font-size: 17px; outline: none; }
+.field:focus { border-color: var(--brand); }
+
+@keyframes ripple { from { transform: scale(0.6); opacity: 0.55; } to { transform: scale(2.4); opacity: 0; } }
+.ripple { animation: ripple 2.4s ease-out infinite; }
+@keyframes blink { 50% { opacity: 0.2; } }
+.dot-live { animation: blink 1.6s ease-in-out infinite; }
+@keyframes shake { 20%, 60% { transform: translateX(-7px); } 40%, 80% { transform: translateX(7px); } }
+.shake { animation: shake 0.4s; }
+@media (prefers-reduced-motion: reduce) { .ripple, .dot-live, .shake { animation: none; } }
