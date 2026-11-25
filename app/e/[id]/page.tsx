@@ -1,0 +1,15 @@
+import type { Metadata } from "next";
+import App from "@/components/App";
+import { happening, eventIds } from "@/lib/places";
+
+export const generateStaticParams = eventIds;
+export const dynamicParams = false;
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const p = happening((await params).id);
+  return p ? { title: p.title, description: p.line, openGraph: { title: p.title, description: p.line, siteName: "Gather" }, twitter: { card: "summary_large_image" } } : {};
+}
+
+export default function Page() {
+  return <App />;
+}

@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
 import { INTENTS } from "@/lib/data";
-import { maskMobile, person, useStore, type Target } from "@/lib/store";
+import { maskMobile, person, useStore, waiting, type Target } from "@/lib/store";
 import { Claim, Held, Pick } from "./Pick";
 import { Avatar, spring } from "./ui";
 
@@ -54,7 +54,7 @@ function Welcome() {
         <p className="mt-3 max-w-[19rem] text-[16.5px] leading-snug text-white/80">Six digits and you&apos;re in the room. No phone numbers handed around.</p>
         <button type="button" className="btn btn-sun mt-7 w-full" onClick={() => act.dial(true)}>I have a number</button>
         <button type="button" className="btn mt-2.5 w-full bg-white/12 text-white" onClick={() => act.auth("contact")}>Choose my number</button>
-        <button type="button" className="mt-2 min-h-[44px] w-full text-[14.5px] font-medium text-white/75 underline underline-offset-4" onClick={act.lived}>Skip ahead to a lived-in account</button>
+        <span className="mt-2 flex justify-center gap-6"><button type="button" className="min-h-[44px] text-[14.5px] font-medium text-white/75 underline underline-offset-4" onClick={act.lived}>Skip ahead</button><button type="button" className="min-h-[44px] text-[14.5px] font-medium text-white/75 underline underline-offset-4" onClick={act.place}>I run a place</button></span>
       </div>
     </div>
   );
@@ -100,9 +100,9 @@ function Code() {
   };
   return (
     <Frame title="Four digits" sub={`Sent to ${maskMobile(s.contact.mobile)}. This is a prototype, so any four will do.`} foot={<button type="button" className="min-h-[44px] text-[14.5px] font-medium text-[var(--soft)]" onClick={() => act.auth("contact")}>Use a different mobile</button>}>
-      <label className="relative flex gap-3">
-        <input className="absolute inset-0 opacity-0" inputMode="numeric" autoComplete="one-time-code" autoFocus aria-label="Verification code" value={v} onChange={(e) => { const d = e.target.value.replace(/\D/g, "").slice(0, 4); setV(d); if (d.length === 4) window.setTimeout(go, 260); }} />
-        {[0, 1, 2, 3].map((i) => <span key={i} className="digits grid h-[68px] w-[60px] place-items-center rounded-2xl bg-[var(--card)] text-[28px]" style={{ border: `2px solid ${v.length === i ? "var(--brand)" : "var(--line)"}` }}>{v[i] ?? ""}</span>)}
+      <label className="relative flex gap-3 pt-3">
+        <input className="absolute inset-0 opacity-0" inputMode="numeric" autoComplete="one-time-code" autoFocus aria-label="Verification code" value={v} onChange={(e) => { const d = e.target.value.replace(/\D/g, "").slice(0, 4); setV(d); if (d.length === 4) { navigator.vibrate?.([8, 30, 14]); window.setTimeout(go, 620); } }} />
+        {[0, 1, 2, 3].map((i) => <motion.span key={i} className="digits grid h-[68px] w-[60px] place-items-center rounded-2xl text-[28px]" animate={v.length === 4 ? { backgroundColor: "#ffb627", y: [0, -9, 0] } : { backgroundColor: "#ffffff", y: 0 }} transition={{ delay: v.length === 4 ? i * 0.06 : 0, duration: 0.34 }} style={{ border: `2px solid ${v.length === 4 ? "var(--sun)" : v.length === i ? "var(--brand)" : "var(--line)"}` }}>{v[i] ?? ""}</motion.span>)}
       </label>
     </Frame>
   );
@@ -113,9 +113,15 @@ function Profile() {
   const [name, setName] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const ok = name.trim().length >= 2 && tags.length === 3;
+  const who = waiting(tags);
   return (
     <Frame title="What should people know?" sub="Your name and three things you're here for, and the number is yours."
-      foot={<button type="button" className="btn btn-main w-full" disabled={!ok} onClick={() => act.signUp(name.trim(), tags)}>{ok ? "Claim my number" : name.trim().length < 2 ? "Add your name" : `Pick ${3 - tags.length} more`}</button>}>
+      foot={<><AnimatePresence>{who.length > 0 && (
+        <motion.div className="flex flex-none items-center gap-3 pb-3" initial={{ opacity: 0, y: 12, height: 0 }} animate={{ opacity: 1, y: 0, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={spring}>
+          <span className="flex flex-none -space-x-2.5"><AnimatePresence>{who.slice(0, 5).map((p) => <motion.span key={p.id} layout initial={{ scale: 0, x: -10 }} animate={{ scale: 1, x: 0 }} exit={{ scale: 0 }} transition={spring} className="rounded-full ring-[3px] ring-[var(--bg)]"><Avatar id={p.id} size={38} /></motion.span>)}</AnimatePresence></span>
+          <span className="text-[15px] leading-snug" aria-live="polite">{who[0].name.split(" ")[0]}{who.length > 1 ? ` and ${who.length - 1} more` : ""} would like to meet you</span>
+        </motion.div>
+      )}</AnimatePresence><button type="button" className="btn btn-main w-full" disabled={!ok} onClick={() => act.signUp(name.trim(), tags)}>{ok ? "Claim my number" : name.trim().length < 2 ? "Add your name" : `Pick ${3 - tags.length} more`}</button></>}>
       <Held />
       <input className="field" placeholder="Your name" aria-label="Your name" value={name} onChange={(e) => setName(e.target.value)} maxLength={30} />
       <div className="mt-5 flex flex-wrap gap-2 pb-4">

@@ -31,7 +31,7 @@ input, textarea { font: inherit; color: inherit; }
 
 /* The device: full-bleed on a phone, a framed handset on anything wider. */
 .stage { min-height: 100dvh; display: grid; place-items: center; }
-.device { position: relative; width: 100%; height: 100dvh; overflow: hidden; background: var(--bg); }
+.device { position: relative; width: 100%; height: 100dvh; overflow: clip; background: var(--bg); }
 @media (min-width: 640px) {
   .stage { padding: 24px; }
   .device { width: 402px; height: min(860px, calc(100dvh - 48px)); border-radius: 44px; box-shadow: 0 0 0 10px #1e1020, 0 40px 80px -30px rgba(30, 16, 32, 0.55); }

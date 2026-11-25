@@ -1,9 +1,9 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { CalendarDays, ChevronRight, Hash, Megaphone, MessageCircle, Plus, Users } from "lucide-react";
-import { ago, count, latest, left, maskEmail, overlap, person, suggested, useNow, useStore, when, type Tab } from "@/lib/store";
-import { Avatar, Faces, Glyph, IdTiles, Unread, firstOf, nameOf, spring } from "./ui";
+import { CalendarDays, ChevronRight, Compass, Hash, MessageCircle, Plus, Users } from "lucide-react";
+import { ago, count, headline, latest, left, maskEmail, momentsFor, overlap, person, suggested, useNow, useStore, when, type Tab } from "@/lib/store";
+import { Avatar, Faces, Glyph, GroupMark, IdTiles, Unread, firstOf, nameOf, rectOf, spring } from "./ui";
 
 function Top({ title }: { title: string }) {
   const { act } = useStore();
@@ -25,10 +25,12 @@ export function Home() {
   const now = useNow();
   const joined = s.communities.filter((c) => c.joined).map((c) => ({ c, ...latest(s, c) })).sort((a, b) => b.at - a.at);
   const ideas = suggested(s);
+  const waitingFor = momentsFor(s);
+  const hour = new Date(now).getHours();
   const live = s.events.filter((e) => e.ticket && !e.dissolved && e.startsAt <= now);
   return (
     <div className="flex h-full flex-col">
-      <Top title="Communities" />
+      <Top title={hour < 5 ? "Still up" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"} />
       <div className="scroll flex-1 px-5 pb-32">
         {s.me && !s.me.emailOk && (
           <div className="mb-4 flex items-center gap-3 rounded-[20px] bg-[var(--brand-soft)] p-4">
@@ -36,8 +38,15 @@ export function Home() {
             <button type="button" className="press min-h-[44px] flex-none rounded-full bg-[var(--brand)] px-4 text-[14.5px] font-semibold text-white" onClick={() => { act.confirmEmail(); act.say("Email confirmed"); }}>Confirm</button>
           </div>
         )}
+        {waitingFor.length > 0 && !s.caughtUp && (
+          <motion.button type="button" layout exit={{ opacity: 0 }} onClick={() => act.moments(true)} className="press mb-3 flex w-full items-center gap-3.5 rounded-[24px] bg-[var(--sun)] p-4 text-left">
+            <span className="flex flex-none -space-x-3">{waitingFor.slice(0, 3).map((m, i) => <motion.span key={m.key} className="rounded-full ring-[3px] ring-[var(--sun)]" initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ ...spring, delay: 0.1 + i * 0.08 }}><Avatar id={m.by} size={38} /></motion.span>)}</span>
+            <span className="min-w-0 flex-1"><span className="block truncate text-[17px] font-semibold leading-tight">While you were away</span><span className="text-[14.5px]">{waitingFor.length} {waitingFor.length === 1 ? "thing" : "things"}, then you&apos;re done</span></span>
+            <ChevronRight size={20} className="flex-none" />
+          </motion.button>
+        )}
         {live.map((e) => (
-          <button key={e.id} type="button" onClick={() => act.push({ t: "room", id: e.id })} className="press mb-5 w-full overflow-hidden rounded-[24px] bg-[var(--ink)] p-5 text-left text-white">
+          <button key={e.id} type="button" onClick={() => act.push({ t: "room", id: e.id })} className="press mb-3 w-full overflow-hidden rounded-[24px] bg-[var(--ink)] p-5 text-left text-white">
             <span className="flex items-center gap-2 text-[14px] font-medium text-[#ffb3a5]"><span className="dot-live h-2 w-2 rounded-full bg-[var(--live)]" /> Live now<span className="digits ml-auto text-white">{left(e.endsAt - now)}</span></span>
             <span className="mt-2 block text-[21px] font-semibold leading-tight tracking-[-0.015em]">{e.title}</span>
             <span className="mt-4 flex items-center justify-between">
@@ -50,24 +59,33 @@ export function Home() {
           <div key={c.id} className="flex items-center gap-4 py-3 opacity-70"><Glyph c={c} size={58} /><span><span className="block text-[17px] font-semibold">{c.name}</span><span className="text-[14.5px] text-[var(--soft)]">Waiting for a host to say yes</span></span></div>
         ))}
         <ul>
-          {joined.map(({ c, rows, note, fresh, at, unread }) => {
-            const lines = rows.slice(0, fresh ? 1 : 2);
-            const more = rows.length - lines.length;
+          {joined.map(({ c, rows, at, unread }) => {
+            const h = headline(s, c);
             const open = s.groups.filter((g) => g.communityId === c.id && !g.joined).length;
             return (
               <motion.li key={c.id} layout transition={spring} className="mb-3 overflow-hidden rounded-[24px] bg-[var(--card)]">
-                <button type="button" onClick={() => act.push({ t: "community", id: c.id })} className="press flex w-full items-center gap-3.5 px-4 pb-2.5 pt-4 text-left">
-                  <Glyph c={c} size={48} />
-                  <span className="min-w-0 flex-1"><span className="block truncate text-[17.5px] font-semibold leading-tight tracking-[-0.01em]">{c.name}</span><span className="text-[13.5px] text-[var(--soft)]">{count(c.size)} members</span></span>
-                  <span className="flex flex-none flex-col items-end gap-1"><span className="text-[13px] text-[var(--soft)]">{at ? ago(at, now) : ""}</span><Unread n={unread} /></span>
+                <button type="button" onClick={(e) => act.push({ t: "community", id: c.id, from: rectOf(e.currentTarget.parentElement!) })} className="press block w-full p-4 pb-3 text-left">
+                  <span className="flex items-center gap-3.5">
+                    <Glyph c={c} size={48} />
+                    <span className="min-w-0 flex-1"><span className="block truncate text-[17.5px] font-semibold leading-tight tracking-[-0.01em]">{c.name}</span><span className="text-[13.5px] text-[var(--soft)]">{count(c.size)} people</span></span>
+                    <span className="flex flex-none flex-col items-end gap-1"><span className="text-[13px] text-[var(--soft)]">{at ? ago(at, now) : ""}</span><Unread n={unread} /></span>
+                  </span>
+                  {h && (
+                    <AnimatePresence mode="popLayout" initial={false}>
+                      <motion.span key={h.text} className="mt-3 flex items-start gap-2.5" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+                        <Avatar id={h.by} size={26} />
+                        <span className="line-clamp-2 min-w-0 flex-1 text-[15px] leading-snug" style={{ color: unread ? "var(--ink)" : "var(--soft)" }}><span className="font-medium">{h.by === "me" ? "You" : firstOf(h.by)}</span> {h.text}</span>
+                      </motion.span>
+                    </AnimatePresence>
+                  )}
                 </button>
-                <div className="relative pb-2.5 pl-[39px] pr-2">
-                  <span className="absolute bottom-[30px] left-[39px] top-0 w-[2px] rounded-full" style={{ background: `hsl(${c.hue} 40% 86%)` }} aria-hidden="true" />
-                  <AnimatePresence initial={false}>
-                    {fresh > 0 && note && <Nested key="a" hue={c.hue} icon={<Megaphone size={16} />} name="Announcements" text={note.text} n={fresh} onClick={() => act.push({ t: "channel", id: c.id })} />}
-                    {lines.map(({ group: g, msg, unread: n }) => <Nested key={g.id} hue={c.hue} icon={g.name[0]} name={g.name} text={msg ? (msg.kind === "note" ? msg.text : `${msg.by === "me" ? "You" : firstOf(msg.by)}: ${msg.text}`) : g.topic} n={n} onClick={() => act.push({ t: "chat", thread: `g:${g.id}` })} />)}
-                    {(more > 0 || open > 0) && <Nested key="more" hue={c.hue} quiet icon={<ChevronRight size={16} />} name={more > 0 ? `${more} more of yours${open ? `, ${open} to join` : ""}` : `${open} ${open === 1 ? "group" : "groups"} to join`} onClick={() => act.push({ t: "community", id: c.id })} />}
-                  </AnimatePresence>
+                <div className="scroll flex gap-2 overflow-x-auto px-4 pb-4">
+                  {rows.map(({ group: g, unread: n }) => (
+                    <button key={g.id} type="button" onClick={() => act.go({ t: "group", id: g.id })} className="press flex min-h-[44px] flex-none items-center gap-2 rounded-full pl-1.5 pr-3.5 text-[14.5px] font-medium" style={{ background: `hsl(${c.hue} 44% 95%)` }}>
+                      <GroupMark g={g} hue={c.hue} size={32} />{g.name}<Unread n={n} />
+                    </button>
+                  ))}
+                  {open > 0 && <button type="button" onClick={() => { act.push({ t: "community", id: c.id }); act.spot(c.id, { at: "explore" }); }} className="press flex min-h-[44px] flex-none items-center gap-1.5 rounded-full bg-[var(--sunk)] px-3.5 text-[14.5px] text-[var(--soft)]"><Compass size={16} />{open} more</button>}
                 </div>
               </motion.li>
             );
@@ -91,21 +109,6 @@ export function Home() {
         )}
       </div>
     </div>
-  );
-}
-
-/** One line under a community, hanging off its spine. */
-function Nested({ hue, icon, name, text, n = 0, quiet = false, onClick }: { hue: number; icon: React.ReactNode; name: string; text?: string; n?: number; quiet?: boolean; onClick: () => void }) {
-  return (
-    <motion.button type="button" layout initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={spring} onClick={onClick} className="press relative flex w-full items-center gap-3 overflow-hidden rounded-[16px] text-left">
-      <span className="h-[2px] w-3 flex-none" style={{ background: `hsl(${hue} 40% 86%)` }} aria-hidden="true" />
-      <span className="-ml-3 grid h-[34px] w-[34px] flex-none translate-x-3 place-items-center rounded-[12px] text-[15px] font-semibold" style={{ background: quiet ? "var(--sunk)" : `hsl(${hue} 50% 92%)`, color: quiet ? "var(--soft)" : `hsl(${hue} 50% 30%)` }} aria-hidden="true">{icon}</span>
-      <span className="ml-3 flex min-h-[50px] min-w-0 flex-1 flex-col justify-center py-1.5">
-        <span className="truncate text-[15px] leading-tight" style={{ fontWeight: quiet ? 400 : 500, color: quiet ? "var(--soft)" : undefined }}>{name}</span>
-        {text && <span className="truncate text-[14px]" style={{ color: n ? "var(--ink)" : "var(--soft)" }}>{text}</span>}
-      </span>
-      <span className="flex-none pr-2"><Unread n={n} /></span>
-    </motion.button>
   );
 }
 

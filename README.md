@@ -30,7 +30,18 @@ Written down, numbers carry a mark (`@482 9104 4076`, `#680 421 907`, `*992 104`
 
 ## Hierarchy
 
-Community > Announcements (only hosts post) > groups you're in > groups you can join. Home nests each community's newest groups under it. A community's feed holds what was said to everyone plus the groups you're in, never a group you haven't joined, and says why a post is there. Each group has its own chat, feed and people.
+Every place is a feed. Communities have no chat: conversation is replies under a post.
+
+- **Home** is your communities, each with the one line worth opening it for and its groups as shortcuts.
+- **A community** is one screen. A rail holds Everything, each group you're in, and the groups you could join; swipe or tap and the feed slides across. Everything is the hosts' latest word, then posts to everyone and posts from your groups, never from a group you haven't joined.
+- **A group** is its own feed.
+- People and Events in the header follow wherever you're standing.
+
+`State.spot` in `lib/store.tsx` is where someone stands in each community; `act.go` is the only way to jump anywhere. Moments that deserve more than a toast live in `components/Peaks.tsx`.
+
+## WhatsApp Business
+
+A host brings a WhatsApp audience in without connecting anything (`components/MoveIn.tsx`): WhatsApp opens with the invite written, they pick their broadcast list and press send. Customers ask the business questions back on WhatsApp. Arrivals are simulated. Share links (`/c/<number>`, `/e/<event>`) carry their own preview image (`lib/card.tsx`).
 
 ## Where things are
 

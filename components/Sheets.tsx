@@ -1,15 +1,15 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Bell, BellOff, CalendarPlus, Check, Hash, IndianRupee, LogOut, Megaphone, PenLine, Share2, Users } from "lucide-react";
+import { Bell, BellOff, CalendarPlus, Check, Hash, IndianRupee, LogOut, Megaphone, PenLine, Share2, Store as Shop, Users } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
 import { GroupGlance } from "./Community";
 import { pretty, type Kind } from "@/lib/ids";
-import { byFit, count, isHost, left, linkTo, maskEmail, maskMobile, pinOpen, useNow, useStore, when, type Sheet } from "@/lib/store";
+import { byFit, count, isHost, left, linkTo, maskEmail, maskMobile, openNow, pinOpen, waLink, useNow, useStore, when, type Sheet } from "@/lib/store";
 import { Avatar, Glyph, IdTiles, SheetShell, firstOf, nameOf, spring, Faces, GroupMark } from "./ui";
 
-const LABEL: Record<Sheet["t"], string> = { plus: "What would you like to do?", post: "New post", host: "Host an event", pay: "Get a seat", split: "Split a bill", comments: "Comments", key: "Pass the key", link: "", peek: "Look inside", group: "About this group", newgroup: "Start a group" };
+const LABEL: Record<Sheet["t"], string> = { plus: "What would you like to do?", post: "New post", host: "Host an event", pay: "Get a seat", split: "Split a bill", comments: "Replies", key: "Pass the key", link: "", peek: "Look inside", group: "About this group", newgroup: "Start a group", ask: "Ask on WhatsApp" };
 
 export default function Sheets() {
   const { s, act } = useStore();
@@ -17,7 +17,7 @@ export default function Sheets() {
   return (
     <SheetShell open={Boolean(sh)} onClose={() => act.sheet(null)} label={sh?.t === "link" ? (sh.what === "mobile" ? "Change your mobile" : "Change your email") : sh ? LABEL[sh.t] : ""}>
       {sh?.t === "plus" && <PlusSheet />}
-      {sh?.t === "post" && <PostSheet initial={sh.communityId} groupId={sh.groupId} announce={sh.announce} />}
+      {sh?.t === "post" && <PostSheet initial={sh.communityId} groupId={sh.groupId} announce={sh.announce} draft={sh.draft} />}
       {sh?.t === "host" && <HostSheet initial={sh.communityId} />}
       {sh?.t === "pay" && <PaySheet id={sh.eventId} />}
       {sh?.t === "split" && <SplitSheet />}
@@ -26,6 +26,7 @@ export default function Sheets() {
       {sh?.t === "peek" && <PeekSheet kind={sh.kind} id={sh.id} />}
       {sh?.t === "group" && <GroupSheet id={sh.id} />}
       {sh?.t === "newgroup" && <NewGroupSheet communityId={sh.communityId} />}
+      {sh?.t === "ask" && <AskSheet id={sh.communityId} about={sh.about} />}
       {sh?.t === "link" && <LinkSheet what={sh.what} />}
     </SheetShell>
   );
@@ -33,12 +34,14 @@ export default function Sheets() {
 
 function PlusSheet() {
   const { s, act } = useStore();
+  const mine = s.communities.find((c) => c.joined && c.biz && c.hosts.includes("me"));
   const any = s.communities.some((c) => c.joined);
   const rows = [
     { icon: Hash, label: "Dial a number", sub: "A person, a community, a group or a PIN", go: () => act.dial(true), ok: true },
     { icon: PenLine, label: "Write a post", sub: "To a community or one of its groups", go: () => act.sheet({ t: "post" }), ok: any },
     { icon: CalendarPlus, label: "Host an event", sub: "Comes with its own room and PIN", go: () => act.sheet({ t: "host" }), ok: any },
     { icon: IndianRupee, label: "Split a bill", sub: "With people you've kept", go: () => act.sheet({ t: "split" }), ok: s.saved.length > 0 },
+    ...(mine ? [{ icon: Shop, label: "Bring in my WhatsApp customers", sub: mine.name, go: () => act.push({ t: "movein", id: mine.id }), ok: true }] : []),
   ];
   return (
     <ul>
@@ -66,11 +69,11 @@ function Where({ value, onChange }: { value: string; onChange: (id: string) => v
 }
 
 /** Who will read it comes before what it says: everyone, one group, or (for hosts) an announcement. */
-function PostSheet({ initial, groupId, announce = false }: { initial?: string; groupId?: string; announce?: boolean }) {
+function PostSheet({ initial, groupId, announce = false, draft = "" }: { initial?: string; groupId?: string; announce?: boolean; draft?: string }) {
   const { s, act } = useStore();
   const [where, setWhere] = useState(initial ?? s.communities.find((c) => c.joined)?.id ?? "");
   const [to, setTo] = useState(announce ? "announce" : (groupId ?? "all"));
-  const [text, setText] = useState("");
+  const [text, setText] = useState(draft);
   const c = s.communities.find((x) => x.id === where);
   const groups = s.groups.filter((g) => g.communityId === where && g.joined);
   const g = groups.find((x) => x.id === to);
@@ -115,18 +118,38 @@ function PeekSheet({ kind, id }: { kind: "community" | "group"; id: string }) {
   );
 }
 
+/** A customer asks; the business answers where it already works. The question is written for them. */
+function AskSheet({ id, about }: { id: string; about?: string }) {
+  const { s, act } = useStore();
+  const now = useNow(60_000);
+  const c = s.communities.find((x) => x.id === id)!;
+  const b = c.biz!;
+  const asks = about ? [`Is there still room at ${about}?`, `I'm coming to ${about}. Anything I should know?`] : ["Do you have a table this evening?", "What's good today?", "Could you keep something aside for me?"];
+  const [text, setText] = useState(asks[0]);
+  return (
+    <>
+      <div className="flex items-center gap-3"><Glyph c={c} size={46} /><div><p className="text-[17px] font-semibold leading-tight">{c.name}</p><p className="text-[14.5px] text-[var(--soft)]">{b.kind}. {openNow(b, now)}</p></div></div>
+      <div className="mt-4 flex flex-wrap gap-2">{asks.map((a) => <button key={a} type="button" aria-pressed={text === a} onClick={() => setText(a)} className="press min-h-[44px] rounded-[18px] px-4 py-2 text-left text-[14.5px] font-medium" style={{ background: text === a ? "var(--sun)" : "var(--sunk)" }}>{a}</button>)}</div>
+      <textarea rows={3} className="field mt-3 resize-none" aria-label="Your question" value={text} onChange={(e) => setText(e.target.value)} />
+      <p className="mt-2 text-[14.5px] leading-snug text-[var(--soft)]">They see your mobile only once you press send in WhatsApp.</p>
+      {b.wa ? <a href={waLink(`Hi ${c.name}! ${text}`, b.wa)} target="_blank" rel="noreferrer" className="btn btn-main mt-4 w-full" onClick={() => act.sheet(null)}>Open WhatsApp</a>
+        : <button type="button" className="btn btn-main mt-4 w-full" onClick={() => { act.sheet(null); act.say("No number added yet, so nothing was sent"); }}>Open WhatsApp</button>}
+    </>
+  );
+}
+
 function GroupSheet({ id }: { id: string }) {
   const { s, act } = useStore();
   const g = s.groups.find((x) => x.id === id)!;
   const c = s.communities.find((x) => x.id === g.communityId)!;
-  const here = s.stack.some((v) => v.t === "community" && v.id === c.id);
   const row = "press flex min-h-[58px] w-full items-center gap-4 text-left text-[16.5px] font-medium";
   return (
     <>
-      <button type="button" className="press flex w-full items-center gap-3 rounded-[18px] bg-[var(--sunk)] p-3 text-left" onClick={() => { act.sheet(null); if (here) act.pop(); else act.push({ t: "community", id: c.id }); }}><Glyph c={c} size={40} /><span className="min-w-0 flex-1"><span className="block text-[13.5px] text-[var(--soft)]">Part of</span><span className="block truncate text-[16px] font-semibold">{c.name}</span></span></button>
+<p className="flex items-center gap-2 text-[14.5px] text-[var(--soft)]"><Glyph c={c} size={24} /> Part of {c.name}</p>
       <div className="mt-4 flex items-center gap-4"><GroupMark g={g} hue={c.hue} size={58} /><div className="min-w-0"><p className="text-[21px] font-semibold leading-tight">{g.name}</p><p className="text-[14.5px] text-[var(--soft)]">{g.topic || "No topic yet"}</p></div></div>
       <span className="mt-4 block"><IdTiles digits={g.id} size="sm" /></span>
       <ul className="mt-2">
+        <li><button type="button" className={row} onClick={() => act.push({ t: "people", id: c.id, groupId: id })}><Users size={21} className="text-[var(--brand)]" />See {count(g.size)} {g.size === 1 ? "person" : "people"}</button></li>
         <li><button type="button" className={row} onClick={() => act.sheet({ t: "key", kind: "group", id })}><Share2 size={21} className="text-[var(--brand)]" />Pass the key</button></li>
         <li><button type="button" className={row} aria-pressed={Boolean(g.muted)} onClick={() => act.mute(id)}>{g.muted ? <Bell size={21} className="text-[var(--brand)]" /> : <BellOff size={21} className="text-[var(--brand)]" />}{g.muted ? "Unmute" : "Mute"}</button></li>
         <li><button type="button" className={`${row} text-[var(--live)]`} onClick={() => { act.leaveGroup(id); act.say(`You left ${g.name}`); }}><LogOut size={21} />Leave group</button></li>
@@ -225,7 +248,7 @@ function CommentsSheet({ id }: { id: string }) {
     <>
       {p.comments.length === 0 && <p className="py-4 text-[15px] text-[var(--soft)]">Be the first to reply.</p>}
       {p.comments.map((c, i) => <div key={i} className="flex gap-3 py-2"><Avatar id={c.by} size={38} /><div><p className="text-[14.5px] font-semibold">{c.by === "me" ? s.me?.name : nameOf(c.by)}</p><p className="text-[16px] leading-snug">{c.text}</p></div></div>)}
-      <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (text.trim()) { act.comment(id, text.trim()); setText(""); } }}><input className="field" aria-label="Add a comment" placeholder="Add a comment" value={text} onChange={(e) => setText(e.target.value)} /><button type="submit" className="btn btn-main !px-5" disabled={!text.trim()}>Send</button></form>
+      <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (text.trim()) { act.comment(id, text.trim()); setText(""); } }}><input className="field" aria-label="Write a reply" placeholder="Write a reply" value={text} onChange={(e) => setText(e.target.value)} /><button type="submit" className="btn btn-main !px-5" disabled={!text.trim()}>Send</button></form>
     </>
   );
 }

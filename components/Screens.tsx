@@ -7,21 +7,23 @@ import { useEffect, useRef, useState } from "react";
 import type { Event } from "@/lib/data";
 import { pretty } from "@/lib/ids";
 import { byFit, count, left, linkTo, maskEmail, maskMobile, overlap, person, pinOpen, stranger, useNow, useStore, when } from "@/lib/store";
+import { Doors } from "./Peaks";
 import { Avatar, Bar, Glyph, IdTiles, Tag, firstOf, nameOf, spring } from "./ui";
 
 // ------------------------------------------------------------ chat
 export function Thread({ thread, draft = "", dark = false }: { thread: string; draft?: string; dark?: boolean }) {
   const { s, act } = useStore();
   const [text, setText] = useState(draft);
-  const end = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const first = useRef(true);
   const msgs = s.threads[thread] ?? [];
   const dm = thread.startsWith("d:");
   const typing = s.typing[thread];
-  useEffect(() => { end.current?.scrollIntoView({ block: "end", behavior: "smooth" }); }, [msgs.length, typing]);
+  useEffect(() => { const el = list.current; el?.scrollTo({ top: el.scrollHeight, behavior: first.current ? "instant" : "smooth" }); first.current = false; }, [msgs.length, typing]);
   const send = () => { const t = text.trim(); if (!t) return; act.send(thread, t); setText(""); };
   return (
     <>
-      <div className="scroll flex-1 px-4 pt-3">
+      <div ref={list} className="scroll flex-1 px-4 pt-3">
         <div className="flex min-h-full flex-col justify-end pb-3">
           {msgs.map((m, i) => {
             if (m.kind === "note") return <motion.p key={m.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="mx-auto mt-3 rounded-full px-3.5 py-1.5 text-[13px]" style={{ background: dark ? "rgba(255,255,255,0.1)" : "var(--sunk)", color: dark ? "rgba(255,255,255,0.7)" : "var(--soft)" }}>{m.text}</motion.p>;
@@ -38,7 +40,6 @@ export function Thread({ thread, draft = "", dark = false }: { thread: string; d
             );
           })}
           {typing && <p className="mt-3 pl-1 text-[14px]" style={{ color: dark ? "rgba(255,255,255,0.6)" : "var(--soft)" }}>{firstOf(typing)} is typing</p>}
-          <div ref={end} />
         </div>
       </div>
       <form className="flex flex-none items-end gap-2 px-3 pb-[max(env(safe-area-inset-bottom),14px)] pt-2" onSubmit={(e) => { e.preventDefault(); send(); }}>
@@ -99,6 +100,7 @@ export function PersonScreen({ id }: { id: string }) {
           <p className="text-[16px] text-[var(--soft)]">{p.headline}</p>
           <p className="mt-1 flex items-center gap-1 text-[14.5px] text-[var(--soft)]"><MapPin size={15} /> {p.city}</p>
           <span className="mt-4"><IdTiles digits={id} /></span>
+          {s.mutual.includes(id) && <p className="mt-3 rounded-full bg-[var(--sun)] px-3.5 py-1.5 text-[14px] font-medium">You kept each other</p>}
         </div>
         {o.line && (
           <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, ...spring }} className="mt-6 rounded-[24px] bg-[var(--sun)] p-5">
@@ -139,6 +141,7 @@ export function MeScreen() {
           <span className="mx-auto mt-5 grid w-fit place-items-center rounded-[24px] bg-[var(--bg)] p-5"><QRCodeSVG value={linkTo({ kind: "person", id: me.id })} size={148} bgColor="transparent" fgColor="#1e1020" /></span>
           <span className="mt-5 block"><IdTiles digits={me.id} size="md" /></span>
           {me.why && <p className="mt-2 text-[14.5px] font-medium text-[var(--brand)]">{me.why}. The only one.</p>}
+          {s.thanks > 0 && <p className="mt-3 text-[14.5px] font-medium">{s.thanks === 1 ? "1 person has" : `${s.thanks} people have`} thanked you</p>}
           <span className="mt-4 flex flex-wrap justify-center gap-1.5">{me.intents.map((i) => <Tag key={i}>{i}</Tag>)}</span>
         </motion.div>
         <p className="mx-auto mt-5 max-w-[17rem] text-center text-[15px] leading-snug text-white/80">The same number everywhere, for life. Your mobile and email stay private.</p>
@@ -182,6 +185,7 @@ export function EventScreen({ id }: { id: string }) {
         </section>
         <section className="mt-3 rounded-[24px] border-2 border-dashed border-[var(--line)] p-5">
           <div className="flex items-center justify-between gap-3"><h2 className="text-[16px] font-semibold">The room</h2>{pinOpen(e, now) && <IdTiles digits={e.room} />}</div>
+          {c.biz && <button type="button" className="press mt-3 flex min-h-[44px] items-center gap-2 rounded-[16px] bg-[var(--brand-soft)] px-4 text-[14.5px] font-semibold text-[var(--brand)]" onClick={() => act.sheet({ t: "ask", communityId: c.id, about: e.title.split(":")[0] })}>Ask {c.name} on WhatsApp</button>}
           <p className="mt-2 text-[14.5px] leading-snug text-[var(--soft)]">{pinOpen(e, now) ? "Anyone with this PIN can walk in." : "Its six-digit PIN appears an hour before."} Closes for good at {new Date(e.endsAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}. Keep who you meet.</p>
         </section>
       </div>
@@ -207,6 +211,7 @@ export function RoomScreen({ id }: { id: string }) {
   const last = ms < 13_000;
   return (
     <div className="relative flex h-full flex-col bg-[var(--ink)] text-white">
+      {!over && <Doors n={e.inside + 1} who={order[0]} />}
       <AnimatePresence>
         {over ? <Dissolved key="over" e={e} /> : (
           <motion.div key="room" className="flex min-h-0 flex-1 flex-col" exit={{ opacity: 0, filter: "blur(18px)", scale: 1.06 }} transition={{ duration: 1.1 }} animate={{ opacity: last ? Math.max(0.35, ms / 13_000) : 1 }}>
@@ -251,7 +256,7 @@ function Dissolved({ e }: { e: Event }) {
           return (
             <motion.li layout key={m} className="flex items-center gap-3.5 py-2.5">
               <Avatar id={m} size={48} />
-              <span className="min-w-0 flex-1"><span className="block text-[16px] font-semibold">{nameOf(m)}</span><span className="block truncate text-[14px] text-white/65">{why ?? person(m)?.headline}</span></span>
+              <span className="min-w-0 flex-1"><span className="block text-[16px] font-semibold">{nameOf(m)}</span><span className="block truncate text-[14px]" style={{ color: s.mutual.includes(m) ? "var(--sun)" : "rgba(255,255,255,0.65)" }}>{s.mutual.includes(m) ? `${firstOf(m)} kept you too` : (why ?? person(m)?.headline)}</span></span>
               <button type="button" aria-pressed={on} onClick={() => act.save(m)} className="press min-h-[44px] rounded-full px-4 text-[14.5px] font-semibold" style={{ background: on ? "var(--sun)" : "rgba(255,255,255,0.14)", color: on ? "var(--ink)" : "#fff" }}>{on ? "Kept" : "Keep"}</button>
             </motion.li>
           );

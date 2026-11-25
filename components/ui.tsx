@@ -140,3 +140,11 @@ export function Unread({ n }: { n: number }) {
 export const nameOf = (id: string) => (id === "me" ? "You" : (person(id)?.name ?? "Someone"));
 export const firstOf = (id: string) => nameOf(id).split(" ")[0];
 export const KIND_COLOR: Record<Kind, string> = { person: "var(--brand)", group: "#3a4a8c", community: "var(--ink)", room: "var(--live)" };
+
+/** Where an element sits in the device, so a screen can grow out of it. */
+export const rectOf = (el: Element) => {
+  const d = el.closest(".device")?.getBoundingClientRect() ?? document.body.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  const n = (v: number) => Math.max(0, Math.round(v));
+  return { t: n(r.top - d.top), r: n(d.right - r.right), b: n(d.bottom - r.bottom), l: n(r.left - d.left) };
+};
