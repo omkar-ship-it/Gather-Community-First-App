@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, X } from "lucide-react";
 import { chunked, specOf, type Kind } from "@/lib/ids";
-import type { Community } from "@/lib/data";
+import type { Community, Group } from "@/lib/data";
 import { person, useStore } from "@/lib/store";
 
 export const spring = { type: "spring", stiffness: 420, damping: 38 } as const;
@@ -37,6 +37,15 @@ export function Glyph({ c, size = 52 }: { c: Pick<Community, "hue" | "glyph">; s
       </svg>
     </span>
   );
+}
+
+/** A group wears its community's colour, so it's always clear whose it is. */
+export function GroupMark({ g, hue, size = 44, quiet = false }: { g: Pick<Group, "name">; hue: number; size?: number; quiet?: boolean }) {
+  return <span aria-hidden="true" className="grid flex-none place-items-center font-semibold" style={{ width: size, height: size, borderRadius: size * 0.36, fontSize: size * 0.4, background: quiet ? "var(--sunk)" : `hsl(${hue} 50% 91%)`, color: `hsl(${hue} 50% 30%)` }}>{g.name[0]}</span>;
+}
+
+export function Faces({ ids, size = 28 }: { ids: string[]; size?: number }) {
+  return <span className="flex flex-none" style={{ paddingLeft: size * 0.28 }}>{ids.map((m) => <span key={m} className="rounded-full" style={{ marginLeft: -size * 0.28 }}><Avatar id={m} size={size} /></span>)}</span>;
 }
 
 /**

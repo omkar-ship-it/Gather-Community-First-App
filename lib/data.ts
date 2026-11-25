@@ -1,13 +1,15 @@
 /** Everything here is invented, for the prototype. */
 export type Person = { id: string; name: string; headline: string; bio: string; intents: string[]; askMe: string; skills: string[]; city: string; hue: number; zone: string };
-export type Community = { id: string; online?: boolean; place?: string; name: string; blurb: string; about: string; hue: number; glyph: string; members: string[]; size: number; joined: boolean; open: boolean };
-export type Group = { id: string; communityId: string; name: string; topic: string; size: number };
+export type Community = { id: string; online?: boolean; place?: string; name: string; blurb: string; about: string; hue: number; glyph: string; members: string[]; size: number; joined: boolean; open: boolean; hosts: string[] };
+/** `fits` are the reasons someone would want this group, so the right ones are offered first. */
+export type Group = { id: string; communityId: string; name: string; topic: string; size: number; joined: boolean; members: string[]; fits: string[]; muted?: boolean; by?: string };
 export type Comment = { by: string; text: string };
-export type Post = { id: string; communityId: string; by: string; at: number; text: string; likes: number; liked: boolean; tag?: string; poll?: { q: string; options: { label: string; votes: number }[]; voted: number | null }; comments: Comment[]; eventId?: string };
+/** Whole community by default; `groupId` narrows it to one group, `announce` is a host speaking to everyone. */
+export type Post = { id: string; communityId: string; groupId?: string; announce?: boolean; seen?: number; by: string; at: number; text: string; likes: number; liked: boolean; tag?: string; poll?: { q: string; options: { label: string; votes: number }[]; voted: number | null }; comments: Comment[]; eventId?: string };
 export type Msg = { id: string; by: string; text: string; at: number; kind?: "note" };
 export type Event = { id: string; inside: number; communityId: string; title: string; blurb: string; place: string; startsAt: number; endsAt: number; price: number; room: string; host: string; going: string[]; seats: number; ticket: boolean; dissolved: boolean };
 /** One number per person, tied to one mobile and one email. Either can be replaced; the number never changes. */
-export type Me = { id: string; zone: string; name: string; headline: string; intents: string[]; hue: number; mobile: string; email: string; emailOk: boolean };
+export type Me = { id: string; zone: string; name: string; headline: string; intents: string[]; hue: number; mobile: string; email: string; emailOk: boolean; why?: string };
 
 export const INTENTS = [
   "Raising seed", "Angel investing", "Hiring", "Open to work", "Looking for co-founder", "Happy to mentor",
@@ -29,24 +31,32 @@ export const PEOPLE: Person[] = [
 ];
 
 export const COMMUNITIES: Community[] = [
-  { id: "680421907", name: "HSR Founders Circle", blurb: "Founders within walking distance of each other", about: "A neighbourhood circle for people building companies in and around HSR. Honest numbers, warm intros, one dinner a month.", hue: 318, glyph: "circle", members: ["31904472311", "25518306683", "47731920156", "22847619537", "41679053260", "36025841840"], size: 214, joined: true, open: true },
-  { id: "681735042", name: "Sunday Runners", blurb: "Slow is a pace", about: "We meet at 6 on Sundays and nobody gets left behind. Coffee after, always.", hue: 150, glyph: "wave", members: ["54103387403", "36025841840", "38260415924", "41679053260"], size: 96, joined: true, open: true },
-  { id: "682906418", name: "Corner Table Club", blurb: "Regulars of a very small cafe", about: "For the people who already know the menu. First dibs on tastings, supper clubs and the window seat.", hue: 32, glyph: "grid", members: ["38260415924", "36025841840", "25518306683"], size: 58, joined: true, open: true },
-  { id: "684611205", name: "Board Game Basement", blurb: "Someone always brings Catan", about: "Friday nights, long tables, no phones after nine. Beginners get the good chairs.", hue: 225, glyph: "dice", members: ["47731920156", "41679053260", "54103387403"], size: 131, joined: false, open: true },
-  { id: "687150361", name: "Second Shift", blurb: "Parents building things after bedtime", about: "Quiet co-working from 9pm, for people whose day starts again when the kids sleep.", hue: 262, glyph: "wave", members: ["22847619537", "25518306683", "31904472311"], size: 77, joined: false, open: false },
-  { id: "642208136", name: "Bandra Book Swap", place: "Mumbai", blurb: "Bring one, take one, stay for chai", about: "", hue: 188, glyph: "grid", members: ["33841506796"], size: 4120, joined: false, open: true },
-  { id: "618402755", online: true, name: "Makers Everywhere", blurb: "People making things, in every city", about: "", hue: 288, glyph: "dice", members: ["31904472311", "22847619537", "41679053260", "25518306683", "47731920156", "33841506796"], size: 1_240_318, joined: true, open: true },
+  { id: "680421907", name: "HSR Founders Circle", blurb: "Founders within walking distance of each other", about: "A neighbourhood circle for people building companies in and around HSR. Honest numbers, warm intros, one dinner a month.", hue: 318, glyph: "circle", members: ["31904472311", "25518306683", "47731920156", "22847619537", "41679053260", "36025841840"], size: 214, joined: true, open: true, hosts: ["36025841840", "31904472311"] },
+  { id: "681735042", name: "Sunday Runners", blurb: "Slow is a pace", about: "We meet at 6 on Sundays and nobody gets left behind. Coffee after, always.", hue: 150, glyph: "wave", members: ["54103387403", "36025841840", "38260415924", "41679053260"], size: 96, joined: true, open: true, hosts: ["54103387403"] },
+  { id: "682906418", name: "Corner Table Club", blurb: "Regulars of a very small cafe", about: "For the people who already know the menu. First dibs on tastings, supper clubs and the window seat.", hue: 32, glyph: "grid", members: ["38260415924", "36025841840", "25518306683"], size: 58, joined: true, open: true, hosts: ["38260415924", "me"] },
+  { id: "684611205", name: "Board Game Basement", blurb: "Someone always brings Catan", about: "Friday nights, long tables, no phones after nine. Beginners get the good chairs.", hue: 225, glyph: "dice", members: ["47731920156", "41679053260", "54103387403"], size: 131, joined: false, open: true, hosts: ["41679053260"] },
+  { id: "687150361", name: "Second Shift", blurb: "Parents building things after bedtime", about: "Quiet co-working from 9pm, for people whose day starts again when the kids sleep.", hue: 262, glyph: "wave", members: ["22847619537", "25518306683", "31904472311"], size: 77, joined: false, open: false, hosts: ["22847619537"] },
+  { id: "642208136", name: "Bandra Book Swap", place: "Mumbai", blurb: "Bring one, take one, stay for chai", about: "", hue: 188, glyph: "grid", members: ["33841506796"], size: 4120, joined: false, open: true, hosts: ["33841506796"] },
+  { id: "618402755", online: true, name: "Makers Everywhere", blurb: "People making things, in every city", about: "", hue: 288, glyph: "dice", members: ["31904472311", "22847619537", "41679053260", "25518306683", "47731920156", "33841506796"], size: 1_240_318, joined: true, open: true, hosts: ["25518306683"] },
 ];
 
+const g = (id: string, communityId: string, name: string, topic: string, size: number, joined: boolean, members: string[], fits: string[] = []): Group => ({ id, communityId, name, topic, size, joined, members, fits });
+
 export const GROUPS: Group[] = [
-  { id: "731806124", communityId: "680421907", name: "Fundraising", topic: "Decks, terms, who's writing cheques", size: 61 },
-  { id: "742117308", communityId: "680421907", name: "Hiring", topic: "Roles in, people out", size: 88 },
-  { id: "755390481", communityId: "680421907", name: "Monthly dinner", topic: "Where, when, who's cooking", size: 34 },
-  { id: "763028052", communityId: "681735042", name: "Routes", topic: "This Sunday's map", size: 52 },
-  { id: "768841776", communityId: "681735042", name: "First 10K", topic: "Beginners, all welcome", size: 27 },
-  { id: "779215613", communityId: "682906418", name: "Today's specials", topic: "What just came out of the oven", size: 41 },
-  { id: "705126880", communityId: "618402755", name: "Show your work", topic: "One thing, half finished", size: 88_412 },
-  { id: "784660247", communityId: "684611205", name: "Friday table", topic: "Who's in this week", size: 36 },
+  g("731806124", "680421907", "Fundraising", "Decks, terms, who's writing cheques", 61, true, ["31904472311", "22847619537", "41679053260"], ["Raising seed", "Angel investing"]),
+  g("742117308", "680421907", "Hiring", "Roles in, people out", 88, true, ["25518306683", "47731920156", "36025841840"], ["Hiring", "Open to work"]),
+  g("755390481", "680421907", "Monthly dinner", "Where, when, who's cooking", 34, false, ["36025841840", "25518306683", "31904472311"], ["Here to make friends", "New in town"]),
+  g("758204913", "680421907", "Building with AI", "What works, what only demos well", 73, false, ["47731920156", "41679053260"], ["Building with AI", "Looking for co-founder"]),
+  g("763028052", "681735042", "Routes", "This Sunday's map", 52, true, ["54103387403", "38260415924", "36025841840"], ["Running buddies"]),
+  g("768841776", "681735042", "First 10K", "Beginners, all welcome", 27, false, ["36025841840", "54103387403"], ["New in town", "Running buddies"]),
+  g("779215613", "682906418", "Today's specials", "What just came out of the oven", 41, true, ["38260415924", "25518306683", "36025841840"], ["Here to make friends", "Finding customers"]),
+  g("771350628", "682906418", "Window seat", "Who's there now, and is there room", 19, false, ["36025841840", "38260415924"], ["Here to make friends", "New in town"]),
+  g("705126880", "618402755", "Show your work", "One thing, half finished", 88_412, true, ["41679053260", "47731920156", "33841506796"], ["Building with AI", "Design feedback"]),
+  g("716093354", "618402755", "Co-founder search", "Two people, one idea", 23_918, false, ["41679053260", "33841506796"], ["Looking for co-founder"]),
+  g("784660247", "684611205", "Friday table", "Who's in this week", 36, false, ["47731920156", "41679053260"], ["Here to make friends", "New in town"]),
+  g("787412905", "684611205", "Rules lawyers", "Settle it here, not at the table", 22, false, ["41679053260", "54103387403"], []),
+  g("792518067", "687150361", "Nine to eleven", "Tonight's quiet room", 31, false, ["22847619537", "31904472311"], ["Raising seed", "Building with AI"]),
+  g("795640183", "642208136", "Chai after", "Where everyone ends up", 640, false, ["33841506796"], ["Here to make friends", "New in town"]),
 ];
 
 const MIN = 60_000, H = 60 * MIN, D = 24 * H;
@@ -67,6 +77,23 @@ export function makeEvents(now: number): Event[] {
 export function makePosts(now: number): Post[] {
   return [
     { id: "p0", communityId: "618402755", by: "47731920156", at: now - 35 * MIN, tag: "Near you", text: "Built a tiny thing that tells you why a query is slow in one sentence. It is wrong half the time. Who wants to break it?", likes: 2214, liked: false, comments: [] },
+    { id: "a1", communityId: "680421907", announce: true, seen: 171, by: "36025841840", at: now - 40 * MIN, text: "Demo night is on now at the Loft. If you're new, come anyway: the first ten minutes are only hellos.", likes: 46, liked: false, eventId: "e1", comments: [] },
+    { id: "a2", communityId: "681735042", announce: true, seen: 88, by: "54103387403", at: now - 30 * H, text: "Sunday starts at 6 sharp from the east gate. Nobody runs alone, ever.", likes: 31, liked: true, eventId: "e2", comments: [] },
+    { id: "a3", communityId: "682906418", announce: true, seen: 49, by: "38260415924", at: now - 26 * H, text: "Supper club is back. Twelve seats, and members get the first day.", likes: 22, liked: false, eventId: "e3", comments: [] },
+    { id: "a4", communityId: "618402755", announce: true, seen: 412_906, by: "25518306683", at: now - 20 * MIN, text: "Show and tell is live in every city. Bring one half-made thing.", likes: 18_204, liked: false, eventId: "e6", comments: [] },
+    { id: "a5", communityId: "684611205", announce: true, seen: 97, by: "41679053260", at: now - 2 * D, text: "Doors at eight on Friday. Beginners get the good chairs.", likes: 28, liked: false, comments: [] },
+    { id: "a6", communityId: "687150361", announce: true, seen: 60, by: "22847619537", at: now - 1 * D, text: "Same rule as always: say what you'll finish, then mute yourself.", likes: 19, liked: false, comments: [] },
+    { id: "g1", communityId: "680421907", groupId: "731806124", by: "31904472311", at: now - 70 * MIN, tag: "Offer", text: "Two slots on Saturday for anyone raising their first round. Bring the number you're most afraid of.", likes: 24, liked: false, comments: [{ by: "22847619537", text: "Taking one. The number is churn." }] },
+    { id: "g2", communityId: "680421907", groupId: "731806124", by: "22847619537", at: now - 26 * H, text: "Our one-pager got shorter and the replies got longer. Sharing the before and after.", likes: 33, liked: false, comments: [] },
+    { id: "g3", communityId: "680421907", groupId: "742117308", by: "47731920156", at: now - 5 * H, tag: "Open to work", text: "I'm free from next month. Databases, slow things, calm teams. Happy to be interviewed by your whole office.", likes: 41, liked: false, comments: [] },
+    { id: "g4", communityId: "680421907", groupId: "755390481", by: "36025841840", at: now - 6 * H, text: "Three people have offered a terrace. One has a very good dog.", likes: 17, liked: false, comments: [] },
+    { id: "g5", communityId: "680421907", groupId: "758204913", by: "41679053260", at: now - 2 * H, text: "Evals for a thing that has no right answer. How are you all doing it?", likes: 29, liked: false, comments: [] },
+    { id: "g6", communityId: "681735042", groupId: "763028052", by: "38260415924", at: now - 7 * H, text: "The short loop now ends at the bakery instead of the gate. You're welcome.", likes: 19, liked: false, comments: [] },
+    { id: "g7", communityId: "681735042", groupId: "768841776", by: "36025841840", at: now - 25 * H, text: "Week four. I ran past my own house and did not go in.", likes: 52, liked: false, comments: [] },
+    { id: "g8", communityId: "682906418", groupId: "779215613", by: "38260415924", at: now - 3 * H, text: "Cardamom, burnt sugar, or both? I have dough for one tray.", likes: 14, liked: false, comments: [], poll: { q: "Tray", options: [{ label: "Cardamom", votes: 9 }, { label: "Burnt sugar", votes: 6 }, { label: "Both, please", votes: 17 }], voted: null } },
+    { id: "g9", communityId: "618402755", groupId: "705126880", by: "33841506796", at: now - 4 * H, text: "Forty crows drawn, sixty to go. Number 31 is judging me.", likes: 3108, liked: false, comments: [] },
+    { id: "g10", communityId: "684611205", groupId: "784660247", by: "47731920156", at: now - 18 * H, text: "Four for Friday. A fifth makes it a better game.", likes: 8, liked: false, comments: [] },
+    { id: "g11", communityId: "618402755", groupId: "716093354", by: "33841506796", at: now - 9 * H, text: "I draw field guides. I need someone who dreams in apps.", likes: 811, liked: false, comments: [] },
     { id: "p1", communityId: "680421907", by: "22847619537", at: now - 22 * MIN, tag: "Ask", text: "Two investors asked me the same thing this week: why farms, why now? My answer takes four minutes. It needs to take one. Who wants to hear it and be rude about it?", likes: 18, liked: false, comments: [{ by: "31904472311", text: "Send me a voice note, I'll time you." }, { by: "36025841840", text: "Come early to demo night, we'll do it in the stairwell." }] },
     { id: "p2", communityId: "680421907", by: "25518306683", at: now - 3 * H, tag: "Hiring", text: "We're hiring two product designers. Clinics, bad wifi, real patients. If you like constraints more than concepts, write to me.", likes: 31, liked: false, comments: [{ by: "47731920156", text: "Sharing with two people who'd be great." }] },
     { id: "p3", communityId: "680421907", by: "36025841840", at: now - 8 * H, text: "Where should the November dinner be?", likes: 9, liked: false, poll: { q: "November dinner", options: [{ label: "Someone's terrace", votes: 14 }, { label: "The usual place", votes: 8 }, { label: "Somewhere new", votes: 11 }], voted: null }, comments: [] },
@@ -87,6 +114,8 @@ export function makeThreads(now: number): Record<string, Msg[]> {
     "g:742117308": [m("25518306683", "Portfolio reviews tonight at 8 if anyone wants eyes on theirs", now - 2 * H), m("47731920156", "Me please", now - 4 * MIN)],
     "g:755390481": [m("36025841840", "Poll's up on the feed. Vote before Friday.", now - 8 * H)],
     "g:763028052": [m("54103387403", "Map for Sunday is pinned", now - 52 * MIN), m("38260415924", "Is there a shorter option for the lazy", now - 47 * MIN), m("54103387403", "There is always a shorter option", now - 46 * MIN)],
+    "g:758204913": [m("47731920156", "Small models, tight prompts. That's the whole talk.", now - 90 * MIN)],
+    "g:771350628": [m("36025841840", "Window seat is free till four", now - 70 * MIN)],
     "g:768841776": [m("36025841840", "I ran 4K without stopping. Telling everyone.", now - 26 * H)],
     "g:779215613": [m("38260415924", "Cardamom buns, eleven left", now - 5 * H)],
     "g:705126880": [m("41679053260", "Day 12 of the bread timer app", now - 11 * H)],

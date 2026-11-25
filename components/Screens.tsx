@@ -1,154 +1,13 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Bookmark, BookmarkCheck, Heart, MapPin, MessageCircle, Send, Share2 } from "lucide-react";
+import { Bookmark, BookmarkCheck, MapPin, Send, Share2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useRef, useState } from "react";
-import type { Event, Post } from "@/lib/data";
+import type { Event } from "@/lib/data";
 import { pretty } from "@/lib/ids";
-import { INTENTS } from "@/lib/data";
-import { ago, byFit, count, left, linkTo, maskEmail, maskMobile, overlap, person, pinOpen, stranger, useNow, useStore, when } from "@/lib/store";
-import { Avatar, Bar, Glyph, IdTiles, Tag, Unread, firstOf, nameOf, spring } from "./ui";
-
-// ------------------------------------------------------------ community
-const TABS = ["feed", "groups", "members", "events"] as const;
-const TAB_LABEL = { feed: "Feed", groups: "Groups", members: "People", events: "Events" };
-
-export function CommunityScreen({ id, initial = "feed" }: { id: string; initial?: (typeof TABS)[number] }) {
-  const { s, act } = useStore();
-  const [tab, setTab] = useState(initial);
-  const [q, setQ] = useState("");
-  const now = useNow(20_000);
-  const c = s.communities.find((x) => x.id === id)!;
-  const groups = s.groups.filter((g) => g.communityId === id);
-  const [want, setWant] = useState<string | null>(null);
-  const big = c.size > 1000;
-  const wants = INTENTS.filter((i) => c.members.some((m) => person(m)!.intents.includes(i)));
-  const people = byFit(s, c.members).map((m) => person(m)!).filter((p) => !want || p.intents.includes(want)).filter((p) => `${p.name} ${p.headline} ${p.intents.join(" ")} ${p.skills.join(" ")}`.toLowerCase().includes(q.toLowerCase()));
-  const events = s.events.filter((e) => e.communityId === id && !e.dissolved);
-  return (
-    <div className="flex h-full flex-col bg-[var(--bg)]">
-      <div className="flex-none text-white" style={{ background: `hsl(${c.hue} 46% 30%)` }}>
-        <Bar dark title="" right={<button type="button" className="press mr-2 flex min-h-[44px] items-center gap-2 rounded-full bg-white/15 px-4 text-[14.5px] font-medium" onClick={() => act.sheet({ t: "key", kind: "community", id })}><Share2 size={16} /> Pass the key</button>} />
-        <div className="px-5 pb-4">
-          <div className="flex items-center gap-4">
-            <span className="rounded-[22px] ring-[3px] ring-white/25"><Glyph c={c} size={64} /></span>
-            <div className="min-w-0"><h1 className="text-[24px] font-semibold leading-tight tracking-[-0.02em]">{c.name}</h1><p className="mt-1 text-[14.5px] text-white/75">{count(c.size)} members{c.online ? ", every city" : ""}</p></div>
-          </div>
-          <div className="mt-4 flex items-center justify-between gap-3"><p className="text-[15px] leading-snug text-white/85">{c.blurb}</p><IdTiles digits={c.id} size="sm" tone="dark" /></div>
-        </div>
-        <div className="flex px-3" role="tablist">
-          {TABS.map((t) => (
-            <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className="relative min-h-[46px] flex-1 text-[15px] font-medium" style={{ opacity: tab === t ? 1 : 0.68 }}>
-              {TAB_LABEL[t]}
-              {tab === t && <motion.span layoutId={`tab-${id}`} transition={spring} className="absolute inset-x-4 bottom-0 h-[3px] rounded-full bg-[var(--sun)]" />}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="scroll flex-1 px-4 pb-28 pt-4">
-        {tab === "feed" && (
-          <>
-            <button type="button" onClick={() => act.sheet({ t: "post", communityId: id })} className="press mb-3 flex min-h-[56px] w-full items-center gap-3 rounded-[20px] bg-[var(--card)] px-4 text-left text-[16px] text-[var(--soft)]"><Avatar id="me" size={34} /> Share something here</button>
-            {s.posts.filter((p) => p.communityId === id).map((p) => <PostCard key={p.id} post={p} now={now} />)}
-          </>
-        )}
-        {tab === "groups" && groups.map((g) => {
-          const last = (s.threads[`g:${g.id}`] ?? []).at(-1);
-          return (
-            <button key={g.id} type="button" onClick={() => act.push({ t: "chat", thread: `g:${g.id}` })} className="press mb-2.5 flex w-full items-center gap-3 rounded-[20px] bg-[var(--card)] p-4 text-left">
-              <span className="min-w-0 flex-1">
-                <span className="flex items-baseline justify-between"><span className="text-[16.5px] font-semibold">{g.name}</span><span className="text-[13px] text-[var(--soft)]">{last ? ago(last.at, now) : ""}</span></span>
-                <span className="mt-0.5 block truncate text-[14.5px] text-[var(--soft)]">{last ? `${firstOf(last.by)}: ${last.text}` : g.topic}</span>
-              </span>
-              <Unread n={s.unread[`g:${g.id}`] ?? 0} />
-            </button>
-          );
-        })}
-        {tab === "members" && (
-          <>
-            <input className="field mb-3" placeholder={big ? `Search ${count(c.size)} people` : "Search by name, skill or what they want"} aria-label="Search people" value={q} onChange={(e) => setQ(e.target.value)} />
-            <div className="scroll -mx-4 mb-3 flex gap-2 overflow-x-auto px-4">{wants.map((i) => <button key={i} type="button" aria-pressed={want === i} onClick={() => setWant(want === i ? null : i)} className="press min-h-[44px] flex-none rounded-full px-4 text-[14.5px] font-medium" style={{ background: want === i ? "var(--sun)" : "var(--card)" }}>{i}</button>)}</div>
-            {big && !q && !want && <h2 className="mb-2.5 px-1 text-[16px] font-semibold">Start with these</h2>}
-            {people.map((p) => {
-              const why = overlap(s, p);
-              return (
-                <button key={p.id} type="button" onClick={() => act.push({ t: "person", id: p.id })} className="press mb-2.5 flex w-full items-start gap-3.5 rounded-[20px] bg-[var(--card)] p-4 text-left">
-                  <Avatar id={p.id} size={48} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[16.5px] font-semibold leading-tight">{p.name}</span>
-                    <span className="block text-[14.5px] text-[var(--soft)]">{p.headline}</span>
-                    <span className="mt-2 flex flex-wrap gap-1.5">{p.intents.map((i) => <Tag key={i}>{i}</Tag>)}</span>
-                    {why.fits && <span className="mt-2 block text-[14px] font-medium text-[var(--brand)]">{why.line}</span>}
-                  </span>
-                </button>
-              );
-            })}
-            {people.length === 0 && <p className="mt-8 text-center text-[15px] text-[var(--soft)]">Nobody matches that. Try a skill or an interest.</p>}
-          </>
-        )}
-        {tab === "events" && (
-          <>
-            {events.map((e) => <EventRow key={e.id} e={e} />)}
-            <button type="button" className="btn btn-quiet mt-1 w-full" onClick={() => act.sheet({ t: "host", communityId: id })}>Host something</button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function EventRow({ e }: { e: Event }) {
-  const { act } = useStore();
-  const now = useNow(20_000);
-  const live = e.startsAt <= now;
-  return (
-    <button type="button" onClick={() => act.push(live && e.ticket ? { t: "room", id: e.id } : { t: "event", id: e.id })} className="press mb-2.5 w-full rounded-[20px] bg-[var(--card)] p-4 text-left">
-      <span className="text-[14px] font-medium" style={{ color: live ? "var(--live)" : "var(--brand)" }}>{live ? "Happening now" : when(e.startsAt)}</span>
-      <span className="mt-0.5 block text-[17px] font-semibold leading-snug">{e.title}</span>
-      <span className="mt-1 flex justify-between text-[14px] text-[var(--soft)]"><span className="truncate">{e.place}</span><span className="font-semibold text-[var(--ink)]">{e.ticket ? "Going" : e.price ? `₹${e.price.toLocaleString("en-IN")}` : "Free"}</span></span>
-    </button>
-  );
-}
-
-function PostCard({ post: p, now }: { post: Post; now: number }) {
-  const { s, act } = useStore();
-  const total = p.poll?.options.reduce((n, o) => n + o.votes, 0) ?? 0;
-  const e = s.events.find((x) => x.id === p.eventId);
-  return (
-    <article className="mb-3 rounded-[22px] bg-[var(--card)] p-4">
-      <button type="button" className="flex w-full items-center gap-3 text-left" onClick={() => p.by !== "me" && act.push({ t: "person", id: p.by })}>
-        <Avatar id={p.by} size={42} />
-        <span className="min-w-0 flex-1"><span className="flex items-baseline gap-2 leading-tight"><span className="truncate text-[15.5px] font-semibold">{p.by === "me" ? s.me?.name : nameOf(p.by)}</span><span className="flex-none text-[13px] text-[var(--soft)]">{ago(p.at, now)}</span></span><span className="block truncate text-[13.5px] text-[var(--soft)]">{p.by === "me" ? s.me?.headline : person(p.by)?.headline}</span></span>
-        {p.tag && <Tag on>{p.tag}</Tag>}
-      </button>
-      <p className="mt-3 text-[16px] leading-[1.5]">{p.text}</p>
-      {p.poll && (
-        <div className="mt-3 grid gap-2">
-          {p.poll.options.map((o, i) => {
-            const pct = Math.round((o.votes / total) * 100);
-            const voted = p.poll!.voted !== null;
-            return (
-              <button key={o.label} type="button" disabled={voted} onClick={() => act.vote(p.id, i)} className="relative min-h-[46px] overflow-hidden rounded-[14px] bg-[var(--sunk)] px-4 text-left text-[15px]">
-                <motion.span className="absolute inset-y-0 left-0" style={{ background: p.poll!.voted === i ? "var(--sun)" : "#e2d7de" }} initial={false} animate={{ width: voted ? `${pct}%` : 0 }} transition={{ duration: 0.5 }} />
-                <span className="relative flex justify-between font-medium"><span>{o.label}</span>{voted && <span className="digits">{pct}%</span>}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-      {e && !e.dissolved && (
-        <button type="button" onClick={() => act.push({ t: "event", id: e.id })} className="press mt-3 flex w-full items-center justify-between rounded-2xl bg-[var(--sunk)] px-4 py-3 text-left"><span><span className="block text-[15px] font-semibold">{e.title}</span><span className="text-[13.5px] text-[var(--soft)]">{when(e.startsAt)}</span></span><span className="text-[15px] font-semibold">{e.ticket ? "Going" : `₹${e.price}`}</span></button>
-      )}
-      <div className="-mb-2 mt-2 flex gap-1 text-[14.5px] text-[var(--soft)]">
-        <button type="button" aria-pressed={p.liked} aria-label={p.liked ? "Unlike" : "Like"} className="press flex min-h-[44px] items-center gap-2 pr-4" style={{ color: p.liked ? "var(--live)" : undefined }} onClick={() => act.like(p.id)}>
-          <motion.span key={String(p.liked)} initial={{ scale: p.liked ? 0.5 : 1 }} animate={{ scale: 1 }} transition={spring}><Heart size={19} fill={p.liked ? "currentColor" : "none"} /></motion.span><span className="digits">{p.likes}</span>
-        </button>
-        <button type="button" className="press flex min-h-[44px] items-center gap-2 pr-4" aria-label="Comments" onClick={() => act.sheet({ t: "comments", postId: p.id })}><MessageCircle size={19} /><span className="digits">{p.comments.length}</span></button>
-      </div>
-    </article>
-  );
-}
+import { byFit, count, left, linkTo, maskEmail, maskMobile, overlap, person, pinOpen, stranger, useNow, useStore, when } from "@/lib/store";
+import { Avatar, Bar, Glyph, IdTiles, Tag, firstOf, nameOf, spring } from "./ui";
 
 // ------------------------------------------------------------ chat
 export function Thread({ thread, draft = "", dark = false }: { thread: string; draft?: string; dark?: boolean }) {
@@ -165,6 +24,7 @@ export function Thread({ thread, draft = "", dark = false }: { thread: string; d
       <div className="scroll flex-1 px-4 pt-3">
         <div className="flex min-h-full flex-col justify-end pb-3">
           {msgs.map((m, i) => {
+            if (m.kind === "note") return <motion.p key={m.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="mx-auto mt-3 rounded-full px-3.5 py-1.5 text-[13px]" style={{ background: dark ? "rgba(255,255,255,0.1)" : "var(--sunk)", color: dark ? "rgba(255,255,255,0.7)" : "var(--soft)" }}>{m.text}</motion.p>;
             const me = m.by === "me";
             const head = !me && !dm && msgs[i - 1]?.by !== m.by;
             return (
@@ -219,14 +79,7 @@ export function ChatScreen({ thread, draft }: { thread: string; draft?: string }
       </div>
     );
   }
-  const g = s.groups.find((x) => x.id === id)!;
-  const c = s.communities.find((x) => x.id === g.communityId)!;
-  return (
-    <div className="flex h-full flex-col bg-[var(--bg)]">
-      <div className="flex-none border-b border-[var(--line)] bg-[var(--card)]"><Bar title={g.name} sub={`${c.name}, ${count(g.size)} people`} right={<button type="button" aria-label="Pass the key" className="press mr-2 grid h-11 w-11 place-items-center rounded-full" onClick={() => act.sheet({ t: "key", kind: "group", id })}><Share2 size={20} /></button>} /></div>
-      <Thread thread={thread} />
-    </div>
-  );
+  return null;
 }
 
 // ------------------------------------------------------------ people
@@ -285,6 +138,7 @@ export function MeScreen() {
           <p className="text-[15px] text-[var(--soft)]">{me.headline}</p>
           <span className="mx-auto mt-5 grid w-fit place-items-center rounded-[24px] bg-[var(--bg)] p-5"><QRCodeSVG value={linkTo({ kind: "person", id: me.id })} size={148} bgColor="transparent" fgColor="#1e1020" /></span>
           <span className="mt-5 block"><IdTiles digits={me.id} size="md" /></span>
+          {me.why && <p className="mt-2 text-[14.5px] font-medium text-[var(--brand)]">{me.why}. The only one.</p>}
           <span className="mt-4 flex flex-wrap justify-center gap-1.5">{me.intents.map((i) => <Tag key={i}>{i}</Tag>)}</span>
         </motion.div>
         <p className="mx-auto mt-5 max-w-[17rem] text-center text-[15px] leading-snug text-white/80">The same number everywhere, for life. Your mobile and email stay private.</p>

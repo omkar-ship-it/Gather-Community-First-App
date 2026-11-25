@@ -1,9 +1,9 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { CalendarDays, Hash, MessageCircle, Plus, Users } from "lucide-react";
-import { ago, latest, left, maskEmail, overlap, person, useNow, useStore, when, type Tab } from "@/lib/store";
-import { Avatar, Glyph, IdTiles, Unread, firstOf, nameOf, spring } from "./ui";
+import { AnimatePresence, motion } from "framer-motion";
+import { CalendarDays, ChevronRight, Hash, Megaphone, MessageCircle, Plus, Users } from "lucide-react";
+import { ago, count, latest, left, maskEmail, overlap, person, suggested, useNow, useStore, when, type Tab } from "@/lib/store";
+import { Avatar, Faces, Glyph, IdTiles, Unread, firstOf, nameOf, spring } from "./ui";
 
 function Top({ title }: { title: string }) {
   const { act } = useStore();
@@ -23,7 +23,8 @@ function Top({ title }: { title: string }) {
 export function Home() {
   const { s, act } = useStore();
   const now = useNow();
-  const joined = s.communities.filter((c) => c.joined).map((c) => ({ c, ...latest(s, c) })).sort((a, b) => (b.best?.msg.at ?? 0) - (a.best?.msg.at ?? 0));
+  const joined = s.communities.filter((c) => c.joined).map((c) => ({ c, ...latest(s, c) })).sort((a, b) => b.at - a.at);
+  const ideas = suggested(s);
   const live = s.events.filter((e) => e.ticket && !e.dissolved && e.startsAt <= now);
   return (
     <div className="flex h-full flex-col">
@@ -31,7 +32,7 @@ export function Home() {
       <div className="scroll flex-1 px-5 pb-32">
         {s.me && !s.me.emailOk && (
           <div className="mb-4 flex items-center gap-3 rounded-[20px] bg-[var(--brand-soft)] p-4">
-            <p className="min-w-0 flex-1 text-[15px] leading-snug">Confirm <b className="font-semibold">{maskEmail(s.me.email)}</b> and your number is yours for good.</p>
+            <p className="min-w-0 flex-1 text-[15px] leading-snug">Confirm <b className="font-semibold">{maskEmail(s.me.email)}</b> so you can always get your number back.</p>
             <button type="button" className="press min-h-[44px] flex-none rounded-full bg-[var(--brand)] px-4 text-[14.5px] font-semibold text-white" onClick={() => { act.confirmEmail(); act.say("Email confirmed"); }}>Confirm</button>
           </div>
         )}
@@ -45,34 +46,66 @@ export function Home() {
             </span>
           </button>
         ))}
-        {joined.length === 0 && s.asked.length === 0 && (
-          <div className="mt-6 rounded-[24px] bg-[var(--card)] p-6 text-center">
-            <p className="text-[19px] font-semibold">Nobody here yet</p>
-            <p className="mx-auto mt-1 max-w-[17rem] text-[15px] leading-snug text-[var(--soft)]">Got a PIN or a number from someone? That&apos;s your way in.</p>
-            <button type="button" className="btn btn-main mt-5 w-full" onClick={() => act.dial(true)}>Dial a number</button>
-          </div>
-        )}
         {s.communities.filter((c) => s.asked.includes(c.id)).map((c) => (
           <div key={c.id} className="flex items-center gap-4 py-3 opacity-70"><Glyph c={c} size={58} /><span><span className="block text-[17px] font-semibold">{c.name}</span><span className="text-[14.5px] text-[var(--soft)]">Waiting for a host to say yes</span></span></div>
         ))}
         <ul>
-          {joined.map(({ c, best, unread }) => (
-            <motion.li key={c.id} layout transition={spring}>
-              <button type="button" onClick={() => act.push({ t: "community", id: c.id })} className="press flex w-full items-center gap-4 py-3 text-left">
-                <Glyph c={c} size={58} />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline justify-between gap-2"><span className="truncate text-[17px] font-semibold">{c.name}</span><span className="flex-none text-[13px] text-[var(--soft)]">{best ? ago(best.msg.at, now) : ""}</span></span>
-                  <span className="mt-0.5 flex items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate text-[14.5px]" style={{ color: unread ? "var(--ink)" : "var(--soft)", fontWeight: unread ? 500 : 400 }}>{best ? `${firstOf(best.msg.by)} in ${best.group.name}: ${best.msg.text}` : c.blurb}</span>
-                    <Unread n={unread} />
-                  </span>
-                </span>
-              </button>
-            </motion.li>
-          ))}
+          {joined.map(({ c, rows, note, fresh, at, unread }) => {
+            const lines = rows.slice(0, fresh ? 1 : 2);
+            const more = rows.length - lines.length;
+            const open = s.groups.filter((g) => g.communityId === c.id && !g.joined).length;
+            return (
+              <motion.li key={c.id} layout transition={spring} className="mb-3 overflow-hidden rounded-[24px] bg-[var(--card)]">
+                <button type="button" onClick={() => act.push({ t: "community", id: c.id })} className="press flex w-full items-center gap-3.5 px-4 pb-2.5 pt-4 text-left">
+                  <Glyph c={c} size={48} />
+                  <span className="min-w-0 flex-1"><span className="block truncate text-[17.5px] font-semibold leading-tight tracking-[-0.01em]">{c.name}</span><span className="text-[13.5px] text-[var(--soft)]">{count(c.size)} members</span></span>
+                  <span className="flex flex-none flex-col items-end gap-1"><span className="text-[13px] text-[var(--soft)]">{at ? ago(at, now) : ""}</span><Unread n={unread} /></span>
+                </button>
+                <div className="relative pb-2.5 pl-[39px] pr-2">
+                  <span className="absolute bottom-[30px] left-[39px] top-0 w-[2px] rounded-full" style={{ background: `hsl(${c.hue} 40% 86%)` }} aria-hidden="true" />
+                  <AnimatePresence initial={false}>
+                    {fresh > 0 && note && <Nested key="a" hue={c.hue} icon={<Megaphone size={16} />} name="Announcements" text={note.text} n={fresh} onClick={() => act.push({ t: "channel", id: c.id })} />}
+                    {lines.map(({ group: g, msg, unread: n }) => <Nested key={g.id} hue={c.hue} icon={g.name[0]} name={g.name} text={msg ? (msg.kind === "note" ? msg.text : `${msg.by === "me" ? "You" : firstOf(msg.by)}: ${msg.text}`) : g.topic} n={n} onClick={() => act.push({ t: "chat", thread: `g:${g.id}` })} />)}
+                    {(more > 0 || open > 0) && <Nested key="more" hue={c.hue} quiet icon={<ChevronRight size={16} />} name={more > 0 ? `${more} more of yours${open ? `, ${open} to join` : ""}` : `${open} ${open === 1 ? "group" : "groups"} to join`} onClick={() => act.push({ t: "community", id: c.id })} />}
+                  </AnimatePresence>
+                </div>
+              </motion.li>
+            );
+          })}
         </ul>
+        {ideas.length > 0 && (
+          <>
+            <h2 className="mb-2.5 mt-5 px-1 text-[16px] font-semibold">{joined.length ? "You might belong here" : "People here want what you want"}</h2>
+            <ul>
+              {ideas.map(({ c, fits }) => (
+                <motion.li key={c.id} layout transition={spring} className="mb-2.5">
+                  <button type="button" onClick={() => act.sheet({ t: "peek", kind: "community", id: c.id })} className="press flex w-full items-center gap-3.5 rounded-[22px] border-2 border-dashed border-[var(--line)] p-3.5 text-left">
+                    <Glyph c={c} size={48} />
+                    <span className="min-w-0 flex-1"><span className="block truncate text-[16.5px] font-semibold">{c.name}</span><span className="block text-[14px] leading-snug text-[var(--soft)]">{fits.length ? `${fits.length === 1 ? `${firstOf(fits[0])} is` : `${firstOf(fits[0])} and ${fits.length - 1} more are`} worth meeting` : c.blurb}</span></span>
+                    <Faces ids={(fits.length ? fits : c.members).slice(0, 2)} size={30} />
+                  </button>
+                </motion.li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
     </div>
+  );
+}
+
+/** One line under a community, hanging off its spine. */
+function Nested({ hue, icon, name, text, n = 0, quiet = false, onClick }: { hue: number; icon: React.ReactNode; name: string; text?: string; n?: number; quiet?: boolean; onClick: () => void }) {
+  return (
+    <motion.button type="button" layout initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={spring} onClick={onClick} className="press relative flex w-full items-center gap-3 overflow-hidden rounded-[16px] text-left">
+      <span className="h-[2px] w-3 flex-none" style={{ background: `hsl(${hue} 40% 86%)` }} aria-hidden="true" />
+      <span className="-ml-3 grid h-[34px] w-[34px] flex-none translate-x-3 place-items-center rounded-[12px] text-[15px] font-semibold" style={{ background: quiet ? "var(--sunk)" : `hsl(${hue} 50% 92%)`, color: quiet ? "var(--soft)" : `hsl(${hue} 50% 30%)` }} aria-hidden="true">{icon}</span>
+      <span className="ml-3 flex min-h-[50px] min-w-0 flex-1 flex-col justify-center py-1.5">
+        <span className="truncate text-[15px] leading-tight" style={{ fontWeight: quiet ? 400 : 500, color: quiet ? "var(--soft)" : undefined }}>{name}</span>
+        {text && <span className="truncate text-[14px]" style={{ color: n ? "var(--ink)" : "var(--soft)" }}>{text}</span>}
+      </span>
+      <span className="flex-none pr-2"><Unread n={n} /></span>
+    </motion.button>
   );
 }
 
@@ -175,7 +208,7 @@ export function TabBar() {
     <div className="absolute inset-x-0 bottom-0 z-20">
       <button type="button" aria-label="Create or enter" onClick={() => act.sheet({ t: "plus" })} className="press absolute -top-[70px] right-5 grid h-[58px] w-[58px] place-items-center rounded-[20px] bg-[var(--brand)] text-white shadow-[0_14px_28px_-10px_rgba(107,29,79,0.7)]"><Plus size={28} /></button>
       <nav className="flex border-t border-[var(--line)] bg-[var(--card)] px-2 pb-[max(env(safe-area-inset-bottom),10px)] pt-1.5">
-        {item("communities", "Communities", Users, u("g:"))}
+        {item("communities", "Communities", Users, s.communities.filter((c) => c.joined).reduce((n, c) => n + latest(s, c).unread, 0))}
         {item("messages", "Messages", MessageCircle, u("d:"))}
         {item("events", "Events", CalendarDays, 0)}
       </nav>

@@ -121,7 +121,7 @@ function Found({ t, onBack }: { t: Target; onBack: () => void }) {
   const p = t.kind === "person" ? person(t.id) : null;
   const live = e && e.startsAt <= now;
   const why = p && s.me ? overlap(s, p).line : null;
-  const cta = p ? (s.me ? `See ${p.name.split(" ")[0]}'s profile` : "Say hello") : e ? (live ? "Walk in" : "See the event") : c?.joined ? "Open" : c?.open ? "Join" : "Ask to join";
+  const cta = p ? (s.me ? `See ${p.name.split(" ")[0]}'s profile` : "Say hello") : e ? (live ? "Walk in" : "See the event") : s.me && (g ? c?.joined && g.joined : c?.joined) ? "Open" : c?.open ? "Join" : "Ask to join";
   return (
     <motion.div className="absolute inset-x-0 bottom-0 flex flex-col rounded-t-[30px] bg-[var(--card)] px-5 pb-[max(env(safe-area-inset-bottom),22px)] pt-6" initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={spring} style={{ minHeight: 372 }}>
       <div className="flex items-center gap-4">
@@ -144,7 +144,7 @@ function Found({ t, onBack }: { t: Target; onBack: () => void }) {
         )}
         {!p && !e && c && (
           <div className="flex items-center gap-3">
-            <span className="flex -space-x-2.5">{c.members.slice(0, 4).map((m) => <span key={m} className="rounded-full ring-[3px] ring-white"><Avatar id={m} size={36} /></span>)}</span>
+            <span className="flex -space-x-2.5">{(g ?? c).members.slice(0, 4).map((m) => <span key={m} className="rounded-full ring-[3px] ring-white"><Avatar id={m} size={36} /></span>)}</span>
             <span className="text-[var(--soft)]">{count(g ? g.size : c.size)} members{c.online ? ", every city" : c.place ? `, ${c.place}` : ""}{c.open ? "" : ". A host says yes to each"}</span>
           </div>
         )}

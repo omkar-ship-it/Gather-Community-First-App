@@ -1,10 +1,10 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { INTENTS } from "@/lib/data";
-import { chunked } from "@/lib/ids";
 import { maskMobile, person, useStore, type Target } from "@/lib/store";
+import { Claim, Held, Pick } from "./Pick";
 import { Avatar, spring } from "./ui";
 
 function destination(s: ReturnType<typeof useStore>["s"], t: Target | null) {
@@ -23,8 +23,9 @@ export default function Onboarding() {
         {s.auth === "welcome" && <Welcome />}
         {s.auth === "contact" && <Contact />}
         {s.auth === "code" && <Code />}
+        {s.auth === "pick" && <Pick />}
         {s.auth === "profile" && <Profile />}
-        {s.auth === "reveal" && <Reveal />}
+        {s.auth === "reveal" && <Claim to={destination(s, s.pending)} />}
       </motion.div>
     </AnimatePresence>
   );
@@ -52,7 +53,7 @@ function Welcome() {
         <h1 className="text-[40px] font-semibold leading-[1.02] tracking-[-0.03em]">Dial in to<br />your people.</h1>
         <p className="mt-3 max-w-[19rem] text-[16.5px] leading-snug text-white/80">Six digits and you&apos;re in the room. No phone numbers handed around.</p>
         <button type="button" className="btn btn-sun mt-7 w-full" onClick={() => act.dial(true)}>I have a number</button>
-        <button type="button" className="btn mt-2.5 w-full bg-white/12 text-white" onClick={() => act.auth("contact")}>Get your own</button>
+        <button type="button" className="btn mt-2.5 w-full bg-white/12 text-white" onClick={() => act.auth("contact")}>Choose my number</button>
         <button type="button" className="mt-2 min-h-[44px] w-full text-[14.5px] font-medium text-white/75 underline underline-offset-4" onClick={act.lived}>Skip ahead to a lived-in account</button>
       </div>
     </div>
@@ -78,7 +79,7 @@ function Contact() {
   const m = mobile.replace(/\D/g, "").slice(-10);
   const ok = /^[6-9]\d{9}$/.test(m) && /.+@.+\..+/.test(email.trim());
   return (
-    <Frame title={to ? `One step from ${to}` : "Tie your number to you"} sub="One mobile and one email hold one Gather number, for life. Nobody you meet sees either."
+    <Frame title={to ? `One step from ${to}` : "First, who holds it?"} sub="Next you choose your own number, for life. One mobile and one email keep it yours, and nobody you meet sees either."
       foot={<button type="button" className="btn btn-main w-full" disabled={!ok} onClick={() => act.contact(m, email.trim())}>Text me a code</button>}>
       <input className="field" autoFocus inputMode="tel" autoComplete="tel" placeholder="Mobile" aria-label="Mobile" value={mobile} onChange={(e) => setMobile(e.target.value)} />
       <input className="field mt-3" inputMode="email" autoComplete="email" placeholder="Email" aria-label="Email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && ok && act.contact(m, email.trim())} />
@@ -91,7 +92,7 @@ function Code() {
   const { s, act } = useStore();
   const [v, setV] = useState("");
   const go = () => {
-    if (s.contact.mobile !== "9876543210") return act.auth("profile");
+    if (s.contact.mobile !== "9876543210") return act.auth("pick");
     const t = s.pending;
     act.back();
     if (t) act.enter(t);
@@ -113,9 +114,10 @@ function Profile() {
   const [tags, setTags] = useState<string[]>([]);
   const ok = name.trim().length >= 2 && tags.length === 3;
   return (
-    <Frame title="What should people know?" sub="Your name and three things you're here for. The rest can wait."
-      foot={<button type="button" className="btn btn-main w-full" disabled={!ok} onClick={() => act.signUp(name.trim(), tags)}>{ok ? "Get my Gather number" : name.trim().length < 2 ? "Add your name" : `Pick ${3 - tags.length} more`}</button>}>
-      <input className="field" autoFocus placeholder="Your name" aria-label="Your name" value={name} onChange={(e) => setName(e.target.value)} maxLength={30} />
+    <Frame title="What should people know?" sub="Your name and three things you're here for, and the number is yours."
+      foot={<button type="button" className="btn btn-main w-full" disabled={!ok} onClick={() => act.signUp(name.trim(), tags)}>{ok ? "Claim my number" : name.trim().length < 2 ? "Add your name" : `Pick ${3 - tags.length} more`}</button>}>
+      <Held />
+      <input className="field" placeholder="Your name" aria-label="Your name" value={name} onChange={(e) => setName(e.target.value)} maxLength={30} />
       <div className="mt-5 flex flex-wrap gap-2 pb-4">
         {INTENTS.map((t) => {
           const on = tags.includes(t);
@@ -123,40 +125,5 @@ function Profile() {
         })}
       </div>
     </Frame>
-  );
-}
-
-/** The first peak: your ID rolls in like a number being chosen for you. */
-function Reveal() {
-  const { s, act } = useStore();
-  const id = s.me!.id;
-  const [shown, setShown] = useState(0);
-  const done = shown >= id.length;
-  const ref = useRef(0);
-  const [spin, setSpin] = useState(0);
-  useEffect(() => {
-    const roll = window.setInterval(() => setSpin((x) => x + 1), 55);
-    const land = window.setInterval(() => { ref.current += 1; setShown(ref.current); navigator.vibrate?.(6); if (ref.current >= id.length) { window.clearInterval(land); window.clearInterval(roll); navigator.vibrate?.([20, 40, 40]); } }, 220);
-    return () => { window.clearInterval(roll); window.clearInterval(land); };
-  }, [id.length]);
-  const to = destination(s, s.pending);
-  return (
-    <div className="relative flex flex-1 flex-col items-center overflow-hidden bg-[var(--ink)] px-6 pb-[max(env(safe-area-inset-bottom),26px)] text-center text-white">
-      <div className="flex flex-1 flex-col items-center justify-center">
-        <p className="text-[17px] text-white/70">{done ? `${s.me!.name.split(" ")[0]}, this one's yours` : "Finding your number"}</p>
-        <div className="relative mt-6 flex items-center gap-1.5">
-          {done && [0, 0.5, 1].map((d) => <span key={d} className="ripple absolute left-1/2 top-1/2 -ml-24 -mt-24 h-48 w-48 rounded-full border-2 border-[var(--sun)]" style={{ animationDelay: `${d}s` }} aria-hidden="true" />)}
-          {chunked(id).map((part, pi) => (
-            <motion.span key={pi} className="digits relative flex rounded-full px-3.5 py-3 text-[clamp(21px,6.6vw,27px)] font-medium" animate={{ background: done ? "#FFB627" : "rgba(255,255,255,0.10)", color: done ? "#1E1020" : "#ffffff" }} transition={{ duration: 0.4 }}>
-              {part.split("").map((d, i) => { const n = chunked(id).slice(0, pi).join("").length + i; return <span key={i} className="inline-block w-[0.66em]" style={{ opacity: n < shown ? 1 : 0.35 }}>{n < shown ? d : (spin * 7 + n * 3) % 10}</span>; })}
-            </motion.span>
-          ))}
-        </div>
-        <motion.p className="mt-8 max-w-[18rem] text-[16px] leading-snug text-white/75" initial={false} animate={{ opacity: done ? 1 : 0, y: done ? 0 : 10 }}>
-          The same number everywhere, for life. Anyone can reach you with it, and nobody learns your mobile or email.
-        </motion.p>
-      </div>
-      <motion.button type="button" className="btn btn-sun w-full" disabled={!done} animate={{ opacity: done ? 1 : 0 }} onClick={() => { const t = s.pending; act.auth(null); if (t) act.enter(t); }}>{to ? `Take me to ${to}` : "Start"}</motion.button>
-    </div>
   );
 }

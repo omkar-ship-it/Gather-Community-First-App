@@ -2,18 +2,24 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { COMMUNITIES, FITS, GROUPS, PEOPLE, makeEvents, makePosts, makeThreads, uid, type Community, type Event, type Group, type Me, type Msg, type Person, type Post } from "./data";
+import type { Offer } from "./numbers";
 import { checks, pretty, specOf, type Kind } from "./ids";
 
+export type CommunityTab = "home" | "feed" | "members" | "events";
 export type Screen =
-  | { t: "community"; id: string; tab?: "feed" | "groups" | "members" | "events" }
-  | { t: "chat"; thread: string; draft?: string }
+  | { t: "community"; id: string; tab?: CommunityTab }
+  | { t: "channel"; id: string }
+  | { t: "chat"; thread: string; draft?: string; tab?: "chat" | "feed" | "people" }
   | { t: "person"; id: string }
   | { t: "event"; id: string }
   | { t: "room"; id: string }
   | { t: "me" };
 export type Sheet =
   | { t: "plus" }
-  | { t: "post"; communityId?: string }
+  | { t: "post"; communityId?: string; groupId?: string; announce?: boolean }
+  | { t: "peek"; kind: "community" | "group"; id: string }
+  | { t: "group"; id: string }
+  | { t: "newgroup"; communityId: string }
   | { t: "host"; communityId?: string }
   | { t: "pay"; eventId: string }
   | { t: "split" }
@@ -28,7 +34,7 @@ type State = {
   me: Me | null;
   /** Where someone was headed before they had an account. They land there, never on a blank home. */
   pending: Target | null;
-  auth: "welcome" | "contact" | "code" | "profile" | "reveal" | null;
+  auth: "welcome" | "contact" | "code" | "pick" | "profile" | "reveal" | null;
   dial: boolean;
   /** Digits the pad opens with: an invite link or a scanned QR. */
   dialWith: string;
@@ -38,6 +44,12 @@ type State = {
   doors: Record<string, { to: Target; until: number }>;
   /** Mobile and email given at sign-up. */
   contact: { mobile: string; email: string };
+  /** The number someone picked, kept off the shelf while they finish signing up. */
+  held: (Offer & { until: number }) | null;
+  /** The last one they let go of, kept in reach. */
+  lapsed: Offer | null;
+  /** A community just joined: the arrival plays before anything else. */
+  arrival: { id: string; groupId?: string } | null;
   /** Communities waiting on a host's yes. */
   asked: string[];
   tab: Tab;
@@ -64,9 +76,9 @@ function fresh(): State {
   const ev = new URLSearchParams(window.location.search).get("e");
   const arrive: Target | null = ev && makeEvents(now).some((e) => e.id === ev) ? { kind: "room", id: ev } : null;
   return {
-    me: null, pending: null, auth: "welcome", dial: link.length > 0 || Boolean(arrive), dialWith: link, arrive, doors: {}, contact: { mobile: "", email: "" }, asked: [], tab: "communities", stack: [], sheet: null, toast: null,
+    me: null, pending: null, auth: "welcome", dial: link.length > 0 || Boolean(arrive), dialWith: link, arrive, doors: {}, contact: { mobile: "", email: "" }, held: null, lapsed: null, arrival: null, asked: [], tab: "communities", stack: [], sheet: null, toast: null,
     communities: COMMUNITIES, groups: GROUPS, posts: makePosts(now), events: makeEvents(now), threads: makeThreads(now),
-    unread: { "g:742117308": 3, "g:731806124": 1, "g:763028052": 2, "d:31904472311": 1 }, typing: {}, saved: ["36025841840"], requests: ["33841506796"],
+    unread: { "g:742117308": 3, "g:731806124": 1, "g:763028052": 2, "d:31904472311": 1, "a:680421907": 1, "a:618402755": 1 }, typing: {}, saved: ["36025841840"], requests: ["33841506796"],
   };
 }
 
@@ -85,17 +97,17 @@ function useStoreValue() {
 
   const act = useMemo(() => {
     const say = (toast: string) => { patch(() => ({ toast })); later(2400, () => patch((x) => (x.toast === toast ? { toast: null } : {}))); };
-    const push = (sc: Screen) => patch((x) => ({ stack: [...x.stack, sc], sheet: null, dial: false, unread: sc.t === "chat" ? { ...x.unread, [sc.thread]: 0 } : x.unread }));
+    const push = (sc: Screen) => patch((x) => ({ stack: [...x.stack, sc], sheet: null, dial: false, unread: sc.t === "chat" ? { ...x.unread, [sc.thread]: 0 } : sc.t === "channel" ? { ...x.unread, [`a:${sc.id}`]: 0 } : x.unread }));
     const addMsg = (thread: string, by: string, text: string, kind?: "note") =>
       patch((x) => ({ threads: { ...x.threads, [thread]: [...(x.threads[thread] ?? []), { id: uid(), by, text, at: Date.now(), kind }] } }));
     const responder = (thread: string, x: State) => {
       if (thread.startsWith("d:")) return thread.slice(2);
       if (thread.startsWith("r:")) { const e = x.events.find((v) => v.id === thread.slice(2)); return e?.going[Math.floor(Math.random() * e.going.length)] ?? null; }
-      const g = x.groups.find((v) => v.id === thread.slice(2)); const c = x.communities.find((v) => v.id === g?.communityId);
-      return c?.members[Math.floor(Math.random() * c.members.length)] ?? null;
+      const g = x.groups.find((v) => v.id === thread.slice(2)); return g?.members[Math.floor(Math.random() * g.members.length)] ?? null;
     };
     /** Open whatever an ID points to, joining on the way. */
     const enter = (t: Target, via?: State["me"]) => {
+      const hello = { now: false };
       patch((x) => {
         const me = via ?? x.me;
         if (!me) return { pending: t, auth: "contact", dial: false };
@@ -104,19 +116,44 @@ function useStoreValue() {
         if (t.kind === "community") {
           const c = x.communities.find((v) => v.id === t.id)!;
           if (!c.open && !c.joined) return { ...base, tab: "communities" as Tab, stack: [], asked: [...x.asked.filter((v) => v !== t.id), t.id] };
-          return { ...base, tab: "communities", communities: x.communities.map((v) => (v.id === t.id && !v.joined ? { ...v, joined: true, size: v.size + 1 } : v)), stack: [{ t: "community", id: t.id } as Screen], toast: c.joined ? null : `You're in ${c.name}` };
+          return { ...base, tab: "communities", communities: x.communities.map((v) => (v.id === t.id && !v.joined ? { ...v, joined: true, size: v.size + 1 } : v)), stack: [{ t: "community", id: t.id } as Screen], arrival: c.joined ? null : { id: t.id } };
         }
         if (t.kind === "group") {
           const g = x.groups.find((v) => v.id === t.id)!;
-          return { ...base, tab: "communities", communities: x.communities.map((v) => (v.id === g.communityId && !v.joined ? { ...v, joined: true, size: v.size + 1 } : v)), stack: [{ t: "community", id: g.communityId, tab: "groups" } as Screen, { t: "chat", thread: `g:${t.id}` } as Screen] };
+const c = x.communities.find((v) => v.id === g.communityId)!;
+          if (!c.joined && !c.open) return { ...base, tab: "communities" as Tab, stack: [], asked: [...x.asked.filter((v) => v !== c.id), c.id] };
+          if (!c.joined) return { ...base, tab: "communities", communities: x.communities.map((v) => (v.id === c.id ? { ...v, joined: true, size: v.size + 1 } : v)), stack: [{ t: "community", id: c.id } as Screen], arrival: { id: c.id, groupId: g.id } };
+          hello.now = !g.joined;
+          return { ...base, tab: "communities", groups: x.groups.map((v) => (v.id === g.id && !v.joined ? { ...v, joined: true, size: v.size + 1 } : v)), stack: [{ t: "community", id: c.id } as Screen, { t: "chat", thread: `g:${t.id}` } as Screen] };
         }
         const e = x.events.find((v) => v.id === t.id)!;
         return { ...base, events: x.events.map((v) => (v.id === e.id ? { ...v, ticket: v.price ? v.ticket : true } : v)), stack: [{ t: e.startsAt <= Date.now() && !e.dissolved && (!e.price || e.ticket) ? "room" : "event", id: e.id } as Screen] };
       });
-      later(2400, () => patch((x) => (x.toast?.startsWith("You're in") ? { toast: null } : {})));
+      later(60, () => { if (hello.now) greet(t.id); });
       // A host says yes a few seconds later, so the wait can be felt too.
-      later(6000, () => patch((x) => (x.asked.includes(t.id) ? { asked: x.asked.filter((v) => v !== t.id), communities: x.communities.map((v) => (v.id === t.id ? { ...v, joined: true, size: v.size + 1 } : v)), toast: `You're in ${x.communities.find((v) => v.id === t.id)?.name}` } : {})));
-      later(8600, () => patch((x) => (x.toast?.startsWith("You're in") ? { toast: null } : {})));
+      const asked = t.kind === "community" ? t.id : t.kind === "group" ? groupHome(t.id) : null;
+      if (asked) later(6000, () => patch((x) => {
+        if (!x.asked.includes(asked)) return {};
+        const top = x.stack.at(-1)?.t;
+        const busy = top === "chat" || top === "room" || x.dial || Boolean(x.sheet);
+        return { asked: x.asked.filter((v) => v !== asked), communities: x.communities.map((v) => (v.id === asked ? { ...v, joined: true, size: v.size + 1 } : v)), ...(busy ? { toast: `${x.communities.find((v) => v.id === asked)?.name} said yes` } : { stack: [{ t: "community", id: asked } as Screen], tab: "communities" as Tab, arrival: { id: asked } }) };
+      }));
+      if (asked) later(8600, () => patch((x) => (x.toast?.endsWith("said yes") ? { toast: null } : {})));
+    };
+    /** Someone who fits says hello first, so nobody walks into silence. */
+    const greet = (id: string) => {
+      addMsg(`g:${id}`, "me", "You joined", "note");
+      later(1500, () => patch((x) => { const gr = x.groups.find((v) => v.id === id); return { typing: { ...x.typing, [`g:${id}`]: gr && gr.members.length ? byFit(x, gr.members)[0] : null } }; }));
+      later(3300, () => patch((x) => {
+        const who = x.typing[`g:${id}`];
+        if (!who || !x.me) return { typing: { ...x.typing, [`g:${id}`]: null } };
+        const gr = x.groups.find((v) => v.id === id);
+        const mine = x.me.intents.find((v) => gr?.fits.includes(v));
+        const text = mine ? `Welcome, ${x.me.name.split(" ")[0]}. I saw “${mine}” on your card, so I'm saying hi first.` : `Welcome, ${x.me.name.split(" ")[0]}. Good to have you in here.`;
+        const top = x.stack.at(-1);
+        const open = top?.t === "chat" && top.thread === `g:${id}`;
+        return { typing: { ...x.typing, [`g:${id}`]: null }, threads: { ...x.threads, [`g:${id}`]: [...(x.threads[`g:${id}`] ?? []), { id: uid(), by: who, text, at: Date.now() }] }, unread: { ...x.unread, [`g:${id}`]: open ? 0 : (x.unread[`g:${id}`] ?? 0) + 1 } };
+      }));
     };
     return {
       say, push, enter, addMsg,
@@ -127,9 +164,10 @@ function useStoreValue() {
       auth: (auth: State["auth"]) => patch(() => ({ auth })),
       lived: () => patch(() => ({ ...fresh(), dial: false, dialWith: "", arrive: null, me: SAMPLE_ME, auth: null, events: makeEvents(Date.now()).map((e) => (e.id === "e1" ? { ...e, ticket: true } : e)) })),
       restart: () => set({ ...fresh(), dial: false, dialWith: "", arrive: null }),
+      hold: (o: Offer | null) => patch((x) => ({ lapsed: o ? null : x.held, held: o && { ...o, until: Date.now() + 5 * 60_000 }, auth: o ? "profile" : "pick" })),
       signUp: (name: string, intents: string[]) => patch((x) => ({
-        me: { ...SAMPLE_ME, ...x.contact, emailOk: false, name, intents, headline: intents[0] ?? "New to Gather" }, auth: "reveal",
-        communities: x.communities.map((c) => ({ ...c, joined: false })), unread: {}, saved: [], requests: [],
+        me: { ...SAMPLE_ME, ...x.contact, id: x.held?.id ?? SAMPLE_ME.id, why: x.held && x.held.tier !== "free" ? x.held.why : undefined, emailOk: false, name, intents, headline: intents[0] ?? "New to Gather" }, auth: "reveal",
+        communities: x.communities.map((c) => ({ ...c, joined: false, hosts: c.hosts.filter((h) => h !== "me") })), groups: x.groups.map((v) => ({ ...v, joined: false })), events: makeEvents(Date.now()), unread: {}, saved: [], requests: [],
         threads: Object.fromEntries(Object.entries(x.threads).filter(([k]) => !k.startsWith("d:"))),
       })),
       send: (thread: string, text: string) => {
@@ -146,7 +184,45 @@ function useStoreValue() {
       like: (id: string) => patch((x) => ({ posts: x.posts.map((v) => (v.id === id ? { ...v, liked: !v.liked, likes: v.likes + (v.liked ? -1 : 1) } : v)) })),
       vote: (id: string, i: number) => patch((x) => ({ posts: x.posts.map((v) => (v.id === id && v.poll && v.poll.voted === null ? { ...v, poll: { ...v.poll, voted: i, options: v.poll.options.map((o, j) => (j === i ? { ...o, votes: o.votes + 1 } : o)) } } : v)) })),
       comment: (id: string, text: string) => patch((x) => ({ posts: x.posts.map((v) => (v.id === id ? { ...v, comments: [...v.comments, { by: "me", text }] } : v)) })),
-      post: (communityId: string, text: string) => patch((x) => ({ posts: [{ id: uid(), communityId, by: "me", at: Date.now(), text, likes: 0, liked: false, comments: [] }, ...x.posts], sheet: null, stack: [{ t: "community", id: communityId, tab: "feed" }] })),
+/** Publish, then let it be felt: hearts arrive, and the person it matters to answers. */
+      post: (communityId: string, text: string, to: { groupId?: string; announce?: boolean } = {}) => {
+        const id = uid();
+        patch((x) => {
+          const base = x.stack.filter((v) => v.t === "community" && v.id === communityId).slice(0, 1);
+          const land: Screen = to.announce ? { t: "channel", id: communityId } : to.groupId ? { t: "chat", thread: `g:${to.groupId}`, tab: "feed" } : { t: "community", id: communityId, tab: "feed" };
+          return { posts: [{ id, communityId, ...to, by: "me", at: Date.now(), text, likes: 0, liked: false, comments: [], ...(to.announce ? { seen: 1 } : {}) }, ...x.posts], sheet: null, stack: to.announce || to.groupId ? [...(base.length ? base : [{ t: "community", id: communityId } as Screen]), land] : [land] };
+        });
+        const bump = (f: (p: Post, x: State) => Post) => patch((x) => ({ posts: x.posts.map((p) => (p.id === id ? f(p, x) : p)) }));
+        [1600, 2300, 3400, 4100, 5600].forEach((ms) => later(ms, () => bump((p) => ({ ...p, likes: p.likes + 1 }))));
+        if (to.announce) [900, 1500, 2100, 2900, 3800, 5000].forEach((ms, i) => later(ms, () => bump((p, x) => { const size = x.communities.find((c) => c.id === communityId)!.size; return { ...p, seen: Math.round(size * [0.12, 0.27, 0.41, 0.58, 0.7, 0.81][i]) }; })));
+        later(4700, () => patch((x) => {
+          const pool = to.groupId ? x.groups.find((v) => v.id === to.groupId)?.members : x.communities.find((v) => v.id === communityId)?.members;
+          const who = byFit(x, pool ?? []).find((v) => v !== "me");
+          if (!who || to.announce) return {};
+          return { posts: x.posts.map((p) => (p.id === id ? { ...p, comments: [...p.comments, { by: who, text: "I can help with this. Message me?" }] } : p)), toast: `${person(who)?.name.split(" ")[0]} answered you` };
+        }));
+        later(7200, () => patch((x) => (x.toast?.endsWith("answered you") ? { toast: null } : {})));
+      },
+      /** Arrival done: into the groups they picked, and one of them opens if they came for it. */
+      settle: (groupIds: string[], open?: string) => {
+        patch((x) => ({ arrival: null, groups: x.groups.map((v) => (groupIds.includes(v.id) && !v.joined ? { ...v, joined: true, size: v.size + 1 } : v)), stack: open ? [...x.stack, { t: "chat", thread: `g:${open}` } as Screen] : x.stack }));
+        groupIds.slice(0, 2).forEach((id, i) => later(i * 2600, () => greet(id)));
+      },
+      joinGroup: (id: string) => {
+        patch((x) => ({ groups: x.groups.map((v) => (v.id === id && !v.joined ? { ...v, joined: true, size: v.size + 1 } : v)), sheet: null, stack: [...x.stack, { t: "chat", thread: `g:${id}` } as Screen] }));
+        greet(id);
+      },
+      leaveGroup: (id: string) => patch((x) => ({ groups: x.groups.map((v) => (v.id === id ? { ...v, joined: false, size: v.size - 1 } : v)), sheet: null, unread: { ...x.unread, [`g:${id}`]: 0 }, stack: x.stack.filter((v) => !(v.t === "chat" && v.thread === `g:${id}`)) })),
+      mute: (id: string) => patch((x) => ({ groups: x.groups.map((v) => (v.id === id ? { ...v, muted: !v.muted } : v)) })),
+      makeGroup: (communityId: string, name: string, topic: string, invite: string[]) => {
+        const id = `7${String(10_000_000 + Math.floor(Math.random() * 89_999_999))}`;
+        patch((x) => ({ groups: [...x.groups, { id, communityId, name, topic, size: 1, joined: true, members: [], fits: [], by: "me" }], sheet: null, stack: [...x.stack, { t: "chat", thread: `g:${id}` } as Screen] }));
+        addMsg(`g:${id}`, "me", "You started this group", "note");
+        invite.forEach((who, i) => {
+          later(1400 + i * 1100, () => { patch((x) => ({ groups: x.groups.map((v) => (v.id === id ? { ...v, members: [...v.members, who], size: v.size + 1 } : v)) })); addMsg(`g:${id}`, who, `${person(who)?.name.split(" ")[0]} joined`, "note"); });
+        });
+        if (invite[0]) later(2400 + invite.length * 1100, () => addMsg(`g:${id}`, invite[0], "Oh good, I've wanted this."));
+      },
       host: (communityId: string, title: string, place: string, price: number, inHours: number) => patch((x) => {
         const d = new Date(Date.now() + inHours * 3_600_000);
         d.setHours(19, 0, 0, 0);
@@ -185,11 +261,11 @@ function useStoreValue() {
     const lines: [string, string, string][] = [["g:763028052", "36025841840", "I'm in for the short one"], ["g:779215613", "38260415924", "Buns: three left"], ["g:731806124", "31904472311", "Terms sheet glossary is in the files"], ["g:742117308", "25518306683", "Two reviews done, one slot left"]];
     const ids = lines.map(([thread, by, text], i) => window.setTimeout(() => patch((x) => {
       const g = x.groups.find((v) => `g:${v.id}` === thread);
-      if (!x.communities.find((c) => c.id === g?.communityId)?.joined) return {};
+      if (!g?.joined) return {};
       const top = x.stack[x.stack.length - 1];
       const open = top?.t === "chat" && top.thread === thread;
       return { threads: { ...x.threads, [thread]: [...(x.threads[thread] ?? []), { id: uid(), by, text, at: Date.now() }] }, unread: { ...x.unread, [thread]: open ? 0 : (x.unread[thread] ?? 0) + 1 } };
-    }), 7000 + i * 16000));
+    }), 9000 + i * 16000));
     return () => ids.forEach((x) => window.clearTimeout(x));
   }, [alive, patch]);
 
@@ -216,6 +292,7 @@ export function useNow(every = 1000) {
 }
 
 // ------------------------------------------------------------ lookups
+const groupHome = (id: string) => GROUPS.find((v) => v.id === id)?.communityId ?? null;
 export const person = (id: string): Person | null => PEOPLE.find((x) => x.id === id) ?? null;
 
 /** What a number or PIN reaches right now. A person's check digit is tested before anyone is looked up. */
@@ -262,16 +339,47 @@ export function overlap(s: State, p: Person) {
   return { line, open, communities, events, fits: Boolean(fit) };
 }
 
-/** A community's latest message across its groups, for sorting home. */
+/** What's going on in a community, in the groups you're in. Muted groups never count as new. */
 export function latest(s: State, c: Community) {
-  let best: { group: Group; msg: Msg } | null = null;
-  let unread = 0;
-  for (const g of s.groups.filter((x) => x.communityId === c.id)) {
-    unread += s.unread[`g:${g.id}`] ?? 0;
-    const msg = (s.threads[`g:${g.id}`] ?? []).at(-1);
-    if (msg && (!best || msg.at > best.msg.at)) best = { group: g, msg };
-  }
-  return { best, unread };
+  const rows = s.groups.filter((x) => x.communityId === c.id && x.joined).map((group) => {
+    const msg = (s.threads[`g:${group.id}`] ?? []).at(-1) ?? null;
+    return { group, msg, at: msg?.at ?? 0, unread: group.muted ? 0 : (s.unread[`g:${group.id}`] ?? 0) };
+  }).sort((a, b) => b.at - a.at);
+  const note = announcements(s, c.id)[0] ?? null;
+  const fresh = s.unread[`a:${c.id}`] ?? 0;
+  return { rows, note, fresh, at: Math.max(rows[0]?.at ?? 0, note?.at ?? 0), unread: rows.reduce((n, x) => n + x.unread, 0) + fresh };
+}
+export const announcements = (s: State, id: string) => s.posts.filter((p) => p.communityId === id && p.announce).sort((a, b) => b.at - a.at);
+export const isHost = (s: State, id: string) => Boolean(s.communities.find((c) => c.id === id)?.hosts.includes("me"));
+
+/**
+ * A community's feed: what was said to everyone, plus the groups you're in.
+ * Nothing from a group you haven't joined. What fits you rises, then what's
+ * recent, and each post can say why it's here.
+ */
+export function feedFor(s: State, id: string) {
+  const mine = new Set(s.groups.filter((v) => v.joined).map((v) => v.id));
+  return s.posts.filter((p) => p.communityId === id && !p.announce && (!p.groupId || mine.has(p.groupId)))
+    .map((p) => {
+      const who = person(p.by);
+      const o = who ? overlap(s, who) : null;
+      const reason = p.by === "me" ? null : o?.fits ? o.line : s.saved.includes(p.by) ? `You kept ${who?.name.split(" ")[0]}` : null;
+      return { p, reason, score: p.at + (p.by === "me" && Date.now() - p.at < 600_000 ? 1e11 : 0) + (reason ? 5 * 3_600_000 : 0) };
+    }).sort((a, b) => b.score - a.score);
+}
+
+/** Groups someone could join, the ones made for what they want first. */
+export function openGroups(s: State, id: string) {
+  const score = (g: Group) => g.fits.filter((f) => s.me?.intents.includes(f)).length;
+  return s.groups.filter((g) => g.communityId === id && !g.joined).sort((a, b) => score(b) - score(a) || b.size - a.size);
+}
+export const fitsMe = (s: State, g: Group) => g.fits.find((f) => s.me?.intents.includes(f)) ?? null;
+
+/** Communities worth finding, by how many people in them fit you. */
+export function suggested(s: State) {
+  return s.communities.filter((c) => !c.joined && !s.asked.includes(c.id) && (!c.place || c.place === s.me?.zone))
+    .map((c) => ({ c, fits: c.members.filter((m) => { const p = person(m); return p && overlap(s, p).fits; }) }))
+    .sort((a, b) => b.fits.length - a.fits.length);
 }
 
 /** The link and QR behind every key: opens straight onto what it's for. */

@@ -7,11 +7,13 @@ npm install
 npm run dev
 ```
 
-Open it on a phone, or on a desktop where it sits in a handset with a list of IDs to try.
+Open it on a phone, or on a desktop where it sits in a handset.
 
 ## The number plan (`lib/ids.ts`)
 
-One universal number per person, for life, tied to one mobile and one email. Either can be replaced; the number never changes. It is random, so it reveals neither.
+One universal number per person, for life, tied to one mobile and one email. Either can be replaced; the number never changes. People choose it themselves (`lib/numbers.ts`): every number on offer is valid, and its price comes from a pattern anyone can see in the digits. It must never be made from a mobile number, so the picker refuses digits from your own.
+
+The picker shows numbers being taken by other people. Here that is simulated; in a real product a number may only go when somebody really takes it.
 
 | Starts with | Is | Digits | Room for |
 | --- | --- | --- | --- |
@@ -26,8 +28,13 @@ Numbers are permanent, PINs are not. There are only a million six-digit numbers,
 
 Written down, numbers carry a mark (`@482 9104 4076`, `#680 421 907`, `*992 104`) that never has to be typed. Links: `/?id=680421907`, `/?e=e1`.
 
+## Hierarchy
+
+Community > Announcements (only hosts post) > groups you're in > groups you can join. Home nests each community's newest groups under it. A community's feed holds what was said to everyone plus the groups you're in, never a group you haven't joined, and says why a post is there. Each group has its own chat, feed and people.
+
 ## Where things are
 
 - `lib/data.ts` people, communities, events and the "why you two should talk" pairings
 - `lib/store.tsx` all state and actions
-- `components/` Onboarding, Dial, Tabs (the three modules), Screens, Sheets
+- `lib/numbers.ts` the numbers people choose from
+- `components/` Onboarding, Pick, Dial, Community, Tabs (the three modules), Screens, Sheets
