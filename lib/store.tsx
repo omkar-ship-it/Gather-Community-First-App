@@ -1,11 +1,11 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { COMMUNITIES, FITS, GROUPS, PEOPLE, makeEvents, makePosts, makeThreads, uid, type Biz, type Community, type Event, type Group, type Me, type Msg, type Person, type Post } from "./data";
+import { COMMUNITIES, FITS, GROUPS, PEOPLE, makeEvents, makePosts, makeThreads, uid, type Biz, type CKind, type Community, type Event, type Group, type Me, type Msg, type Person, type Plan, type Post } from "./data";
 import type { Offer } from "./numbers";
 import { checks, pretty, specOf, type Kind } from "./ids";
 
-/** Where someone is inside a community: its whole feed, one group's, or the groups they could join. */
+/** The tab someone left a community or a group on. */
 export type Spot = { at: string };
 /** Anything worth jumping to. A group always lands inside its community, never on a screen of its own. */
 export type Go =
@@ -20,8 +20,8 @@ export type Rect = { t: number; r: number; b: number; l: number };
 export type Nudge = { key: string; by: string; title: string; text: string; go: Go };
 export type Screen =
   | { t: "community"; id: string; from?: Rect }
-  | { t: "people"; id: string; groupId?: string }
-  | { t: "events"; id: string }
+  | { t: "group"; id: string; from?: Rect }
+  | { t: "start" }
   | { t: "channel"; id: string }
   | { t: "chat"; thread: string; draft?: string }
   | { t: "person"; id: string }
@@ -35,8 +35,11 @@ export type Sheet =
   | { t: "peek"; kind: "community" | "group"; id: string }
   | { t: "group"; id: string }
   | { t: "newgroup"; communityId: string }
+  | { t: "join"; kind: "community" | "group"; id: string }
+  | { t: "about"; id: string }
+  | { t: "switch"; id: string }
   | { t: "ask"; communityId: string; about?: string }
-  | { t: "host"; communityId?: string }
+  | { t: "host"; communityId?: string; groupId?: string }
   | { t: "pay"; eventId: string }
   | { t: "split" }
   | { t: "comments"; postId: string }
@@ -83,6 +86,10 @@ type State = {
   thanks: number;
   /** Communities whose WhatsApp customers have been brought in, and how many came. */
   movedIn: Record<string, number>;
+  /** Paid memberships, by community or group. */
+  paid: Record<string, { since: number; until: number; no: number; ends?: boolean }>;
+  /** Groups waiting on someone inside to say yes. */
+  askedGroups: string[];
   moments: boolean;
   caughtUp: boolean;
   communities: Community[];
@@ -106,9 +113,9 @@ function fresh(): State {
   const ev = path?.[1] === "e" ? path[2] : new URLSearchParams(window.location.search).get("e");
   const arrive: Target | null = ev && makeEvents(now).some((e) => e.id === ev) ? { kind: "room", id: ev } : null;
   return {
-    me: null, pending: null, auth: "welcome", dial: link.length > 0 || Boolean(arrive), dialWith: link, arrive, doors: {}, contact: { mobile: "", email: "" }, held: null, lapsed: null, arrival: null, asked: [], tab: "communities", stack: [], sheet: null, toast: null, spot: {}, nudge: null, sending: null, mutual: [], meet: null, thanks: 0, movedIn: {}, moments: false, caughtUp: false,
+    me: null, pending: null, auth: "welcome", dial: link.length > 0 || Boolean(arrive), dialWith: link, arrive, doors: {}, contact: { mobile: "", email: "" }, held: null, lapsed: null, arrival: null, asked: [], tab: "communities", stack: [], sheet: null, toast: null, spot: {}, nudge: null, sending: null, mutual: [], meet: null, thanks: 0, movedIn: {}, paid: {}, askedGroups: [], moments: false, caughtUp: false,
     communities: COMMUNITIES, groups: GROUPS, posts: makePosts(now), events: makeEvents(now), threads: makeThreads(now),
-    unread: { "f:742117308": 2, "f:763028052": 1, "d:31904472311": 1, "a:680421907": 1, "f:731806124": 1, "f:779215613": 1, "a:618402755": 1 }, typing: {}, saved: ["36025841840"], requests: ["33841506796"],
+    unread: { "f:742117308": 2, "f:763028052": 1, "d:31904472311": 1, "a:680421907": 1, "f:731806124": 1, "f:779215613": 1, "f:792210033": 1, "f:790082157": 1, "a:683017426": 1, "a:618402755": 1 }, typing: {}, saved: ["36025841840"], requests: ["33841506796"],
   };
 }
 
@@ -126,16 +133,21 @@ function useStoreValue() {
 
   const act = useMemo(() => {
     /** Standing in front of this feed right now? Then nothing in it is unread. */
-    const here = (x: State, gid: string) => { const top = x.stack.at(-1); return top?.t === "community" && x.spot[top.id]?.at === gid; };
+    const here = (x: State, gid: string) => { const top = x.stack.at(-1); return top?.t === "group" && top.id === gid; };
     const joinedIn = (groups: Group[], ids: string[]) => [...groups.filter((v) => !ids.includes(v.id) || v.joined), ...ids.flatMap((id) => groups.filter((v) => v.id === id && !v.joined)).map((v) => ({ ...v, joined: true, size: v.size + 1 }))];
-    const read = (x: State, cid: string, sp: Spot) => ({ ...x.unread, ...(sp.at === "all" ? { [`a:${cid}`]: 0 } : { [`f:${sp.at}`]: 0 }) });
-    /** Stand somewhere in a community, opening it only if it isn't open already. */
-    const stand = (x: State, cid: string, sp: Spot): Partial<State> => {
+    /** Stand somewhere: a community, or a group, which always has its community behind it. */
+    const stand = (x: State, cid: string, gid?: string, tab?: string): Partial<State> => {
       const i = x.stack.findIndex((v) => v.t === "community" && v.id === cid);
-      return { sheet: null, dial: false, nudge: null, tab: "communities", spot: { ...x.spot, [cid]: sp }, unread: read(x, cid, sp), stack: i < 0 ? [...x.stack, { t: "community", id: cid } as Screen] : x.stack.slice(0, i + 1) };
+      const under = i < 0 ? [...x.stack.filter((v) => v.t !== "group"), { t: "community", id: cid } as Screen] : x.stack.slice(0, i + 1);
+      return {
+        sheet: null, dial: false, nudge: null, tab: "communities",
+        spot: tab ? { ...x.spot, [gid ?? cid]: { at: tab } } : x.spot,
+        unread: gid ? { ...x.unread, [`f:${gid}`]: 0 } : x.unread,
+        stack: gid ? [...under, { t: "group", id: gid } as Screen] : under,
+      };
     };
     const say = (toast: string) => { patch(() => ({ toast })); later(2400, () => patch((x) => (x.toast === toast ? { toast: null } : {}))); };
-    const push = (sc: Screen) => patch((x) => ({ stack: [...x.stack, sc], sheet: null, dial: false, nudge: null, unread: sc.t === "community" ? read(x, sc.id, x.spot[sc.id] ?? { at: "all" }) : sc.t === "chat" ? { ...x.unread, [sc.thread]: 0 } : sc.t === "channel" ? { ...x.unread, [`a:${sc.id}`]: 0 } : x.unread }));
+    const push = (sc: Screen) => patch((x) => ({ stack: [...x.stack, sc], sheet: null, dial: false, nudge: null, unread: sc.t === "group" ? { ...x.unread, [`f:${sc.id}`]: 0 } : sc.t === "chat" ? { ...x.unread, [sc.thread]: 0 } : sc.t === "channel" ? { ...x.unread, [`a:${sc.id}`]: 0 } : x.unread }));
     const addMsg = (thread: string, by: string, text: string, kind?: "note") =>
       patch((x) => ({ threads: { ...x.threads, [thread]: [...(x.threads[thread] ?? []), { id: uid(), by, text, at: Date.now(), kind }] } }));
     const responder = (thread: string, x: State) => {
@@ -154,15 +166,19 @@ function useStoreValue() {
         if (t.kind === "community") {
           const c = x.communities.find((v) => v.id === t.id)!;
           if (!c.open && !c.joined) return { ...base, tab: "communities" as Tab, stack: [], asked: [...x.asked.filter((v) => v !== t.id), t.id] };
+          if (c.plan && !c.joined && !x.paid[c.id]) return { ...base, tab: "communities" as Tab, sheet: { t: "join", kind: "community", id: c.id } as Sheet };
           return { ...base, tab: "communities", communities: x.communities.map((v) => (v.id === t.id && !v.joined ? { ...v, joined: true, size: v.size + 1 } : v)), stack: [{ t: "community", id: t.id } as Screen], arrival: c.joined ? null : { id: t.id } };
         }
         if (t.kind === "group") {
           const g = x.groups.find((v) => v.id === t.id)!;
           const c = x.communities.find((v) => v.id === g.communityId)!;
           if (!c.joined && !c.open) return { ...base, tab: "communities" as Tab, stack: [], asked: [...x.asked.filter((v) => v !== c.id), c.id] };
+          if (!c.joined && c.plan && !x.paid[c.id]) return { ...base, tab: "communities" as Tab, sheet: { t: "join", kind: "community", id: c.id } as Sheet };
           if (!c.joined) return { ...base, tab: "communities", communities: x.communities.map((v) => (v.id === c.id ? { ...v, joined: true, size: v.size + 1 } : v)), stack: [{ t: "community", id: c.id } as Screen], arrival: { id: c.id, groupId: g.id } };
+          if (!g.joined && g.plan && !x.paid[g.id]) return { ...stand({ ...x, stack: [] }, c.id), ...base, sheet: { t: "join", kind: "group", id: g.id } as Sheet };
+          if (!g.joined && g.ask) return { ...stand({ ...x, stack: [] }, c.id, undefined, "groups"), ...base, sheet: { t: "peek", kind: "group", id: g.id } as Sheet };
           hello.now = !g.joined;
-          return { ...stand({ ...x, stack: [] }, c.id, { at: g.id }), ...base, tab: "communities", groups: joinedIn(x.groups, [g.id]) };
+          return { ...stand({ ...x, stack: [] }, c.id, g.id), ...base, tab: "communities", groups: joinedIn(x.groups, [g.id]) };
         }
         const e = x.events.find((v) => v.id === t.id)!;
         return { ...base, events: x.events.map((v) => (v.id === e.id ? { ...v, ticket: v.price ? v.ticket : true } : v)), stack: [{ t: e.startsAt <= Date.now() && !e.dissolved && (!e.price || e.ticket) ? "room" : "event", id: e.id } as Screen] };
@@ -191,11 +207,12 @@ function useStoreValue() {
     };
     return {
       say, push, enter, addMsg,
-      spot: (cid: string, sp: Spot) => patch((x) => ({ spot: { ...x.spot, [cid]: sp }, unread: read(x, cid, sp) })),
+      spot: (id: string, at: string) => patch((x) => ({ spot: { ...x.spot, [id]: { at } } })),
+      seen: (id: string) => patch((x) => (x.unread[`a:${id}`] ? { unread: { ...x.unread, [`a:${id}`]: 0 } } : {})),
       go: (to: Go) => patch((x) => {
-        if (to.t === "group") { const g = x.groups.find((v) => v.id === to.id); return g ? stand(x, g.communityId, { at: g.id }) : {}; }
-        if (to.t === "community") return x.communities.find((c) => c.id === to.id)?.joined ? stand(x, to.id, { at: "all" }) : {};
-        if (to.t === "post") { const p = x.posts.find((v) => v.id === to.id); return p ? { ...stand(x, p.communityId, { at: p.groupId ?? "all" }), sheet: { t: "comments", postId: p.id } as Sheet } : {}; }
+        if (to.t === "group") { const g = x.groups.find((v) => v.id === to.id); return g ? stand(x, g.communityId, g.id) : {}; }
+        if (to.t === "community") return x.communities.find((c) => c.id === to.id)?.joined ? stand(x, to.id) : {};
+        if (to.t === "post") { const p = x.posts.find((v) => v.id === to.id); return p ? { ...stand(x, p.communityId, p.groupId, "feed"), sheet: { t: "comments", postId: p.id } as Sheet } : {}; }
         const sc: Screen = to.t === "person" ? { t: "person", id: to.id } : to.t === "event" ? { t: "event", id: to.id } : { t: "chat", thread: `d:${to.id}`, draft: to.draft };
         return { stack: [...x.stack, sc], sheet: null, nudge: null, ...(to.t === "dm" ? { unread: { ...x.unread, [`d:${to.id}`]: 0 } } : {}) };
       }),
@@ -213,7 +230,7 @@ function useStoreValue() {
       biz: (id: string, b: Biz) => patch((x) => ({ communities: x.communities.map((c) => (c.id === id ? { ...c, biz: b } : c)) })),
       /** The customers are in: the community is bigger, and two of them have already found each other. */
       moveIn: (id: string, n: number, ids: string[]) => {
-        patch((x) => ({ ...stand({ ...x, stack: [] }, id, { at: "all" }), movedIn: { ...x.movedIn, [id]: n }, communities: x.communities.map((c) => (c.id === id ? { ...c, size: c.size + n, members: [...new Set([...c.members, ...ids])] } : c)) }));
+        patch((x) => ({ ...stand({ ...x, stack: [] }, id, undefined, "groups"), movedIn: { ...x.movedIn, [id]: n }, communities: x.communities.map((c) => (c.id === id ? { ...c, size: c.size + n, members: [...new Set([...c.members, ...ids])] } : c)) }));
         const pair = pairs(ids)[0];
         if (pair) later(2600, () => patch(() => ({ nudge: { key: uid(), by: pair.a, title: `${person(pair.a)?.name.split(" ")[0]} and ${person(pair.b)?.name.split(" ")[0]} just met`, text: pair.why, go: { t: "person", id: pair.a } as Go } })));
       },
@@ -256,7 +273,7 @@ function useStoreValue() {
           const g = x.groups.find((v) => v.id === to.groupId);
           return { sheet: null, sending: { hue: c.hue, label: to.announce ? `Everyone in ${c.name}` : (g?.name ?? c.name), reach: g?.size ?? c.size, faces: byFit(x, g?.members ?? c.members).slice(0, 7) } };
         });
-        later(out - 500, () => patch((x) => ({ ...stand(x, communityId, { at: to.groupId ?? "all" }), posts: [{ id, communityId, ...to, by: "me", at: Date.now(), text, likes: 0, liked: false, comments: [], ...(to.announce ? { seen: 1 } : {}) }, ...x.posts] })));
+        later(out - 500, () => patch((x) => ({ ...stand(x, communityId, to.groupId, "feed"), posts: [{ id, communityId, ...to, by: "me", at: Date.now(), text, likes: 0, liked: false, comments: [], ...(to.announce ? { seen: 1 } : {}) }, ...x.posts] })));
         later(out, () => patch(() => ({ sending: null })));
         const bump = (f: (p: Post, x: State) => Post) => patch((x) => ({ posts: x.posts.map((p) => (p.id === id ? f(p, x) : p)) }));
         [1600, 2300, 3400, 4100, 5600].forEach((ms) => later(out + ms, () => bump((p) => ({ ...p, likes: p.likes + 1 }))));
@@ -270,33 +287,75 @@ function useStoreValue() {
       },
       /** Arrival done: into the groups they picked, and one of them opens if they came for it. */
       settle: (groupIds: string[], open?: string) => {
-        patch((x) => { const cid = x.arrival?.id; return { arrival: null, groups: joinedIn(x.groups, groupIds), ...(cid ? { spot: { ...x.spot, [cid]: { at: open ?? "all" } } } : {}) }; });
+        patch((x) => { const cid = x.arrival?.id; return { ...(cid && open ? stand(x, cid, open) : {}), arrival: null, groups: joinedIn(x.groups, groupIds) }; });
         groupIds.slice(0, 2).forEach((id, i) => later(i * 2600, () => greet(id)));
       },
-      joinGroup: (id: string) => {
-        patch((x) => { const g = x.groups.find((v) => v.id === id)!; return { ...stand(x, g.communityId, { at: id }), groups: joinedIn(x.groups, [id]) }; });
-        greet(id);
+      /** Join from wherever you are. Paid groups ask for payment first, private ones for a yes. */
+      joinGroup: (id: string, go = false) => {
+        const ok = { now: false, ask: false };
+        patch((x) => {
+          const g = x.groups.find((v) => v.id === id)!;
+          if (g.plan && !x.paid[id]) return { sheet: { t: "join", kind: "group", id } as Sheet };
+          if (g.ask && !x.paid[id]) { ok.ask = true; return { sheet: null, askedGroups: [...x.askedGroups.filter((v) => v !== id), id] }; }
+          ok.now = true;
+          return { ...(go ? stand(x, g.communityId, id) : { sheet: null }), groups: joinedIn(x.groups, [id]) };
+        });
+        later(60, () => {
+          if (ok.now) greet(id);
+          if (!ok.ask) return;
+          later(5200, () => patch((x) => {
+            if (!x.askedGroups.includes(id)) return {};
+            const g = x.groups.find((v) => v.id === id)!;
+            const who = g.members[0];
+            return { askedGroups: x.askedGroups.filter((v) => v !== id), groups: joinedIn(x.groups, [id]), ...(who ? { nudge: { key: uid(), by: who, title: `${person(who)?.name.split(" ")[0]} let you into ${g.name}`, text: "Come in, everyone's inside.", go: { t: "group", id } as Go } } : {}) };
+          }));
+        });
       },
-      leaveGroup: (id: string) => patch((x) => ({ groups: x.groups.map((v) => (v.id === id ? { ...v, joined: false, size: v.size - 1 } : v)), sheet: null, unread: { ...x.unread, [`f:${id}`]: 0 }, spot: { ...x.spot, [x.groups.find((v) => v.id === id)!.communityId]: { at: "all" } } })),
+      /** Paid, so in. The arrival shows the membership. */
+      pay: (kind: "community" | "group", id: string) => {
+        patch((x) => {
+          const plan = (kind === "community" ? x.communities.find((v) => v.id === id) : x.groups.find((v) => v.id === id))?.plan;
+          const size = (kind === "community" ? x.communities.find((v) => v.id === id) : x.groups.find((v) => v.id === id))?.size ?? 0;
+          const until = new Date(Date.now());
+          if (plan?.per === "year") until.setFullYear(until.getFullYear() + 1); else until.setMonth(until.getMonth() + 1);
+          return { paid: { ...x.paid, [id]: { since: Date.now(), until: until.getTime(), no: size + 1 } } };
+        });
+      },
+      /** Stop renewing. They keep what they paid for until it runs out. */
+      endPlan: (id: string) => patch((x) => (x.paid[id] ? { paid: { ...x.paid, [id]: { ...x.paid[id], ends: !x.paid[id].ends } } } : {})),
+      startCommunity: (v: { kind: CKind; name: string; biz: boolean; plan?: Plan; groups: string[]; ask: boolean }) => {
+        const id = `6${String(10_000_000 + Math.floor(Math.random() * 89_999_999))}`;
+        patch((x) => {
+          const hue = KIND_HUE[v.kind];
+          const c: Community = { kind: v.kind, id, name: v.name, blurb: `${v.kind === "Interest" ? "Community" : v.kind}, just opened`, about: "", hue, glyph: ["circle", "wave", "grid", "dice"][Math.floor(Math.random() * 4)], members: [], size: 1, joined: true, open: !v.ask, hosts: ["me"], plan: v.plan, biz: v.biz ? { kind: v.kind, opens: 9, closes: 21, wa: "", catalogue: "" } : undefined };
+          const groups: Group[] = v.groups.map((name, i) => ({ id: `7${id.slice(1, 7)}${i}${Math.floor(Math.random() * 9)}`.slice(0, 9), communityId: id, name, topic: "", size: 1, joined: true, members: [], fits: [], by: "me" }));
+          return { communities: [c, ...x.communities], groups: [...x.groups, ...groups] };
+        });
+        return id;
+      },
+      opened: (id: string) => patch((x) => stand({ ...x, stack: [] }, id, undefined, "groups")),
+      leaveGroup: (id: string) => patch((x) => ({ groups: x.groups.map((v) => (v.id === id ? { ...v, joined: false, size: v.size - 1 } : v)), sheet: null, unread: { ...x.unread, [`f:${id}`]: 0 }, stack: x.stack.filter((v) => !(v.t === "group" && v.id === id)) })),
       mute: (id: string) => patch((x) => ({ groups: x.groups.map((v) => (v.id === id ? { ...v, muted: !v.muted } : v)) })),
       makeGroup: (communityId: string, name: string, topic: string, invite: string[]) => {
         const id = `7${String(10_000_000 + Math.floor(Math.random() * 89_999_999))}`;
-        patch((x) => ({ ...stand(x, communityId, { at: id }), groups: [...x.groups, { id, communityId, name, topic, size: 1, joined: true, members: [], fits: [], by: "me" }] }));
+        patch((x) => ({ ...stand(x, communityId, id), groups: [...x.groups, { id, communityId, name, topic, size: 1, joined: true, members: [], fits: [], by: "me" }] }));
         invite.forEach((who, i) => {
           later(1400 + i * 1100, () => { patch((x) => ({ groups: x.groups.map((v) => (v.id === id ? { ...v, members: [...v.members, who], size: v.size + 1 } : v)) })); });
         });
         if (invite[0]) later(2400 + invite.length * 1100, () => patch((x) => ({ posts: [{ id: uid(), communityId, groupId: id, by: invite[0], at: Date.now(), text: "Oh good, I've wanted this.", likes: 1, liked: false, comments: [] }, ...x.posts], nudge: { key: uid(), by: invite[0], title: `${person(invite[0])?.name.split(" ")[0]} is in`, text: "Oh good, I've wanted this.", go: { t: "group", id } as Go } })));
       },
-      host: (communityId: string, title: string, place: string, price: number, inHours: number) => patch((x) => {
+      host: (communityId: string, title: string, place: string, price: number, inHours: number, groupId?: string, repeats?: string) => patch((x) => {
         const d = new Date(Date.now() + inHours * 3_600_000);
         d.setHours(19, 0, 0, 0);
         const startsAt = d.getTime();
         const room = `9${String(10000 + ((x.events.length * 7919 + title.length * 131) % 89999)).padStart(5, "0")}`;
-        const ev: Event = { id: uid(), inside: 0, communityId, title, blurb: "Hosted by you.", place, startsAt, endsAt: startsAt + 2 * 3_600_000, price, room, host: "me", going: [], seats: 20, ticket: true, dissolved: false };
-        return { events: [...x.events, ev], sheet: null, stack: [...x.stack.filter((v) => v.t === "community"), { t: "event", id: ev.id }] };
+        const ev: Event = { id: uid(), groupId, repeats, inside: 0, communityId, title, blurb: "Hosted by you.", place, startsAt, endsAt: startsAt + 2 * 3_600_000, price, room, host: "me", going: [], seats: 20, ticket: true, dissolved: false };
+        return { events: [...x.events, ev], sheet: null, stack: [...x.stack.filter((v) => v.t === "community" || v.t === "group"), { t: "event", id: ev.id }] };
       }),
+      /** Say yes or take it back, right where the event is. */
+      rsvp: (id: string) => patch((x) => ({ events: x.events.map((e) => (e.id === id ? { ...e, ticket: !e.ticket } : e)) })),
       ticket: (id: string) => patch((x) => ({ events: x.events.map((e) => (e.id === id ? { ...e, ticket: true } : e)) })),
-      joinCommunity: (id: string) => patch((x) => ({ communities: x.communities.map((c) => (c.id === id && !c.joined ? { ...c, joined: true, size: c.size + 1 } : c)) })),
+      joinCommunity: (id: string) => patch((x) => ({ communities: x.communities.map((c) => (c.id === id && !c.joined && !c.plan ? { ...c, joined: true, size: c.size + 1 } : c)) })),
       /** Keep someone. If you fit, they keep you back, and that deserves a moment. */
       save: (id: string) => {
         patch((x) => ({ saved: x.saved.includes(id) ? x.saved.filter((v) => v !== id) : [...x.saved, id] }));
@@ -341,7 +400,7 @@ function useStoreValue() {
       const g = x.groups.find((v) => v.id === gid);
       if (!g?.joined) return {};
       const top = x.stack[x.stack.length - 1];
-      const seen = top?.t === "community" && x.spot[top.id]?.at === gid;
+      const seen = top?.t === "group" && top.id === gid;
       return { posts: [{ id: uid(), communityId: g.communityId, groupId: gid, by, at: Date.now(), tag, text, likes: 1, liked: false, comments: [] }, ...x.posts], unread: { ...x.unread, [`f:${gid}`]: seen ? 0 : (x.unread[`f:${gid}`] ?? 0) + 1 } };
     }), 9000 + i * 16000));
     return () => ids.forEach((x) => window.clearTimeout(x));
@@ -370,6 +429,11 @@ export function useNow(every = 1000) {
 }
 
 // ------------------------------------------------------------ lookups
+const KIND_HUE: Record<CKind, number> = { "Run club": 150, Professional: 318, Alumni: 160, "Café": 32, Work: 250, Gym: 8, Restaurant: 42, Interest: 225 };
+export const money = (p: Plan) => `₹${p.price.toLocaleString("en-IN")} a ${p.per}`;
+/** "Café, by the owner" or "Run club": what it is and who's behind it. */
+export const what = (c: Community) => (c.biz ? `${c.kind}, run by the business` : c.kind === "Interest" ? "Community" : c.kind === "Work" ? "Work, private" : c.kind === "Alumni" || c.kind === "Professional" ? `${c.kind} community` : c.kind);
+export const day = (at: number) => new Date(at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 const groupHome = (id: string) => GROUPS.find((v) => v.id === id)?.communityId ?? null;
 export const person = (id: string): Person | null => PEOPLE.find((x) => x.id === id) ?? null;
 
@@ -488,7 +552,7 @@ export const fitsMe = (s: State, g: Group) => g.fits.find((f) => s.me?.intents.i
 
 /** Communities worth finding, by how many people in them fit you. */
 export function suggested(s: State) {
-  return s.communities.filter((c) => !c.joined && !s.asked.includes(c.id) && (!c.place || c.place === s.me?.zone))
+  return s.communities.filter((c) => !c.joined && !c.secret && !s.asked.includes(c.id) && (!c.place || c.place === s.me?.zone))
     .map((c) => ({ c, fits: c.members.filter((m) => { const p = person(m); return p && overlap(s, p).fits; }) }))
     .sort((a, b) => b.fits.length - a.fits.length);
 }

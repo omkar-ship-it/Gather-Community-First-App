@@ -30,14 +30,15 @@ Written down, numbers carry a mark (`@482 9104 4076`, `#680 421 907`, `*992 104`
 
 ## Hierarchy
 
-Every place is a feed. Communities have no chat: conversation is replies under a post.
+A community is its groups. Both levels have the same shape, so nothing has to be learnt twice.
 
-- **Home** is your communities, each with the one line worth opening it for and its groups as shortcuts.
-- **A community** is one screen. A rail holds Everything, each group you're in, and the groups you could join; swipe or tap and the feed slides across. Everything is the hosts' latest word, then posts to everyone and posts from your groups, never from a group you haven't joined.
-- **A group** is its own feed.
-- People and Events in the header follow wherever you're standing.
+- **Community**: Groups, Feed, People, Events. Groups holds Announcements (only hosts post), the groups you're in, the ones you can join, and Add group. It shows who's inside a group before you join it, and scales to dozens with sections and search.
+- **Group**: its own Feed, People and Events. The arrows in its header jump to a sibling group.
+- There is no chat in communities: conversation is replies under a post.
 
-`State.spot` in `lib/store.tsx` is where someone stands in each community; `act.go` is the only way to jump anywhere. Moments that deserve more than a toast live in `components/Peaks.tsx`.
+A community has a kind (run club, professional, alumni, café, work, gym, restaurant, interest), is run by a person or a business (`biz`), and is free or paid (`plan`). A group inside can be open, by request (`ask`) or paid on its own. `components/Start.tsx` makes a new one. Memberships renew and stop in one tap; payments are simulated.
+
+`act.go` is the way to jump anywhere; `State.spot` remembers the tab each place was left on. Moments that deserve more than a toast live in `components/Peaks.tsx`.
 
 ## WhatsApp Business
 

@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarDays, ChevronRight, Compass, Hash, MessageCircle, Plus, Users } from "lucide-react";
-import { ago, count, headline, latest, left, maskEmail, momentsFor, overlap, person, suggested, useNow, useStore, when, type Tab } from "@/lib/store";
+import { ago, headline, latest, left, maskEmail, momentsFor, money, overlap, person, suggested, useNow, useStore, what, when, type Tab } from "@/lib/store";
 import { Avatar, Faces, Glyph, GroupMark, IdTiles, Unread, firstOf, nameOf, rectOf, spring } from "./ui";
 
 function Top({ title }: { title: string }) {
@@ -67,7 +67,7 @@ export function Home() {
                 <button type="button" onClick={(e) => act.push({ t: "community", id: c.id, from: rectOf(e.currentTarget.parentElement!) })} className="press block w-full p-4 pb-3 text-left">
                   <span className="flex items-center gap-3.5">
                     <Glyph c={c} size={48} />
-                    <span className="min-w-0 flex-1"><span className="block truncate text-[17.5px] font-semibold leading-tight tracking-[-0.01em]">{c.name}</span><span className="text-[13.5px] text-[var(--soft)]">{count(c.size)} people</span></span>
+                    <span className="min-w-0 flex-1"><span className="block truncate text-[17.5px] font-semibold leading-tight tracking-[-0.01em]">{c.name}</span><span className="block truncate text-[13.5px] text-[var(--soft)]">{what(c)}{s.paid[c.id] ? ", member" : ""}</span></span>
                     <span className="flex flex-none flex-col items-end gap-1"><span className="text-[13px] text-[var(--soft)]">{at ? ago(at, now) : ""}</span><Unread n={unread} /></span>
                   </span>
                   {h && (
@@ -85,12 +85,13 @@ export function Home() {
                       <GroupMark g={g} hue={c.hue} size={32} />{g.name}<Unread n={n} />
                     </button>
                   ))}
-                  {open > 0 && <button type="button" onClick={() => { act.push({ t: "community", id: c.id }); act.spot(c.id, { at: "explore" }); }} className="press flex min-h-[44px] flex-none items-center gap-1.5 rounded-full bg-[var(--sunk)] px-3.5 text-[14.5px] text-[var(--soft)]"><Compass size={16} />{open} more</button>}
+                  {open > 0 && <button type="button" onClick={() => act.go({ t: "community", id: c.id })} className="press flex min-h-[44px] flex-none items-center gap-1.5 rounded-full bg-[var(--sunk)] px-3.5 text-[14.5px] text-[var(--soft)]"><Compass size={16} />{open} more</button>}
                 </div>
               </motion.li>
             );
           })}
         </ul>
+        <button type="button" onClick={() => act.push({ t: "start" })} className="press mb-2 flex min-h-[66px] w-full items-center gap-3.5 rounded-[24px] bg-[var(--brand-soft)] px-4 text-left text-[var(--brand)]"><Plus size={24} className="flex-none" /><span className="min-w-0 flex-1"><span className="block text-[16.5px] font-semibold leading-tight">Start a community</span><span className="text-[14px]">Run club, café, alumni, gym, work</span></span><ChevronRight size={20} /></button>
         {ideas.length > 0 && (
           <>
             <h2 className="mb-2.5 mt-5 px-1 text-[16px] font-semibold">{joined.length ? "You might belong here" : "People here want what you want"}</h2>
@@ -99,7 +100,7 @@ export function Home() {
                 <motion.li key={c.id} layout transition={spring} className="mb-2.5">
                   <button type="button" onClick={() => act.sheet({ t: "peek", kind: "community", id: c.id })} className="press flex w-full items-center gap-3.5 rounded-[22px] border-2 border-dashed border-[var(--line)] p-3.5 text-left">
                     <Glyph c={c} size={48} />
-                    <span className="min-w-0 flex-1"><span className="block truncate text-[16.5px] font-semibold">{c.name}</span><span className="block text-[14px] leading-snug text-[var(--soft)]">{fits.length ? `${fits.length === 1 ? `${firstOf(fits[0])} is` : `${firstOf(fits[0])} and ${fits.length - 1} more are`} worth meeting` : c.blurb}</span></span>
+                    <span className="min-w-0 flex-1"><span className="block truncate text-[16.5px] font-semibold">{c.name}</span><span className="block text-[14px] leading-snug text-[var(--soft)]">{fits.length ? `${fits.length === 1 ? `${firstOf(fits[0])} is` : `${firstOf(fits[0])} and ${fits.length - 1} more are`} worth meeting` : c.blurb}</span><span className="mt-0.5 block text-[13.5px] font-medium text-[var(--brand)]">{c.kind}{c.plan ? `, ${money(c.plan)}` : ", free"}</span></span>
                     <Faces ids={(fits.length ? fits : c.members).slice(0, 2)} size={30} />
                   </button>
                 </motion.li>

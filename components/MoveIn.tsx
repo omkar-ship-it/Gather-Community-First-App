@@ -9,7 +9,7 @@ import { linkTo, pairs, useStore, waLink } from "@/lib/store";
 import { Avatar, Bar, Glyph, IdTiles, firstOf, spring } from "./ui";
 
 const LOCAL = PEOPLE.filter((p) => p.zone === "Bengaluru").map((p) => p.id);
-const STEPS = ["idea", "place", "invite", "arrive"] as const;
+
 
 /**
  * Bringing a WhatsApp Business audience into Gather. The host keeps WhatsApp
@@ -20,11 +20,12 @@ export default function MoveIn({ id }: { id: string }) {
   const { s } = useStore();
   const [i, setI] = useState(0);
   const c = s.communities.find((x) => x.id === id)!;
+  const STEPS = c.biz ? (["idea", "place", "invite", "arrive"] as const) : (["idea", "invite", "arrive"] as const);
   const next = () => { navigator.vibrate?.(8); setI((v) => v + 1); };
   const step = STEPS[i];
   return (
     <div className="flex h-full flex-col" style={{ background: step === "idea" || step === "arrive" ? `hsl(${c.hue} 46% 24%)` : "var(--bg)", transition: "background 0.4s" }}>
-      <Bar dark={step === "idea" || step === "arrive"} title="" right={<span className="flex gap-1.5 pr-5" role="img" aria-label={`Step ${i + 1} of 4`}>{STEPS.map((x, k) => <motion.span key={x} className="h-2 rounded-full" animate={{ width: k === i ? 22 : 8, opacity: k <= i ? 1 : 0.3 }} style={{ background: step === "idea" || step === "arrive" ? "var(--sun)" : "var(--brand)" }} />)}</span>} />
+      <Bar dark={step === "idea" || step === "arrive"} title="" right={<span className="flex gap-1.5 pr-5" role="img" aria-label={`Step ${i + 1} of ${STEPS.length}`}>{STEPS.map((x, k) => <motion.span key={x} className="h-2 rounded-full" animate={{ width: k === i ? 22 : 8, opacity: k <= i ? 1 : 0.3 }} style={{ background: step === "idea" || step === "arrive" ? "var(--sun)" : "var(--brand)" }} />)}</span>} />
       <div className="relative min-h-0 flex-1 overflow-clip">
         <AnimatePresence mode="popLayout" initial={false}>
           <motion.div key={step} className="absolute inset-0 flex flex-col" initial={{ opacity: 0, x: 70 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -70 }} transition={spring}>
@@ -68,7 +69,7 @@ function Idea({ onNext }: { onNext: () => void }) {
           <AnimatePresence mode="wait" initial={false}>
             <motion.div key={String(on)} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.22 }}>
               <h1 className="text-[33px] font-semibold leading-[1.04] tracking-[-0.03em]">{on ? "Now they know each other." : "They all know you."}</h1>
-              <p className="mt-2.5 text-[16.5px] leading-snug text-white/85">{on ? "Keep your WhatsApp. Give your customers a reason to come back that isn't a discount: one another." : "On a broadcast list, every customer is alone with you."}</p>
+              <p className="mt-2.5 text-[16.5px] leading-snug text-white/85">{on ? "Keep your WhatsApp. Give people a reason to come back that isn't another message: one another." : "On WhatsApp, most of them are phone numbers to each other."}</p>
             </motion.div>
           </AnimatePresence>
         </div>
@@ -122,12 +123,18 @@ const REASONS: { label: string; text: (n: string) => string }[] = [
   { label: "Short", text: (n) => `${n} has a place of its own now. Come in, we saved you a seat.` },
 ];
 
+const OPEN: typeof REASONS = [
+  { label: "Find each other", text: (n) => `${n} has a place now where you can see who everyone is, not just their number. Two minutes to get in.` },
+  { label: "Events in one spot", text: (n) => `No more scrolling for where and when. Everything ${n} is doing is here, and one tap says you're coming.` },
+  { label: "Short", text: (n) => `${n} has moved somewhere we can find each other. Come in.` },
+];
+
 function Invite({ id, onNext }: { id: string; onNext: () => void }) {
   const { s, act } = useStore();
   const c = s.communities.find((x) => x.id === id)!;
   const link = linkTo({ kind: "community", id });
   const [why, setWhy] = useState(0);
-  const [text, setText] = useState(() => REASONS[0].text(c.name));
+  const [text, setText] = useState(() => (c.biz ? REASONS : OPEN)[0].text(c.name));
   const [poster, setPoster] = useState(false);
   const [sent, setSent] = useState(false);
   const full = `${text.trim()}\n\n${link}`;
@@ -136,12 +143,12 @@ function Invite({ id, onNext }: { id: string; onNext: () => void }) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="scroll flex-1 px-6 pb-4 pt-2">
         <h1 className="text-[27px] font-semibold leading-tight tracking-[-0.02em]">Why should they come?</h1>
-        <div className="mt-4 flex flex-wrap gap-2" role="radiogroup" aria-label="Reason">{REASONS.map((r, k) => <button key={r.label} type="button" role="radio" aria-checked={why === k} onClick={() => { setWhy(k); setText(r.text(c.name)); }} className="press min-h-[44px] rounded-full px-4 text-[15px] font-medium" style={{ background: why === k ? "var(--sun)" : "var(--card)" }}>{r.label}</button>)}</div>
+        <div className="mt-4 flex flex-wrap gap-2" role="radiogroup" aria-label="Reason">{(c.biz ? REASONS : OPEN).map((r, k) => <button key={r.label} type="button" role="radio" aria-checked={why === k} onClick={() => { setWhy(k); setText(r.text(c.name)); }} className="press min-h-[44px] rounded-full px-4 text-[15px] font-medium" style={{ background: why === k ? "var(--sun)" : "var(--card)" }}>{r.label}</button>)}</div>
         <motion.div layout className="mt-4 rounded-[24px] rounded-bl-[8px] bg-[var(--card)] p-4">
           <textarea aria-label="Invite message" rows={4} className="w-full resize-none bg-transparent text-[16.5px] leading-snug !outline-none" value={text} onChange={(e) => setText(e.target.value)} />
           <div className="mt-2 flex items-center gap-3 overflow-hidden rounded-[18px] p-3 text-white" style={{ background: `hsl(${c.hue} 46% 30%)` }}><Glyph c={c} size={46} /><span className="min-w-0"><span className="block truncate text-[15.5px] font-semibold">{c.name}</span><span className="block truncate text-[13.5px] text-white/80">{link.replace(/^https?:\/\//, "")}</span></span></div>
         </motion.div>
-        <p className="mt-3 text-[14.5px] leading-snug text-[var(--soft)]">WhatsApp opens with this ready. Choose your broadcast list there and press send. We never see your contacts.</p>
+        <p className="mt-3 text-[14.5px] leading-snug text-[var(--soft)]">WhatsApp opens with this ready. Choose your group or broadcast list there and press send. We never see your contacts.{link.includes("?id=") ? " Prototype: a community you just started lives only on this phone, so its link won't open elsewhere." : ""}</p>
         <h2 className="mb-2 mt-6 text-[16px] font-semibold">Everywhere else they find you</h2>
         <ul className="overflow-hidden rounded-[22px] bg-[var(--card)]">
           <Kit icon={<QrCode size={20} />} title="Counter card" sub="They scan it while they wait" onClick={() => setPoster(true)} />
@@ -198,13 +205,13 @@ function Arrive({ id }: { id: string }) {
           <AnimatePresence mode="wait" initial={false}>
             {linked ? (
               <motion.div key="l" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={spring}>
-                <h1 className="text-[32px] font-semibold leading-[1.05] tracking-[-0.03em]">{links.length} good introductions, all at your place.</h1>
+                <h1 className="text-[32px] font-semibold leading-[1.05] tracking-[-0.03em]">{links.length} good introductions, waiting to happen.</h1>
                 {l && <p className="mt-2 text-[16.5px] leading-snug text-white/85">{firstOf(l.a)} and {firstOf(l.b)}: {l.why}.</p>}
               </motion.div>
             ) : (
               <motion.div key="n" exit={{ opacity: 0, y: -10 }}>
                 <p className="digits text-[58px] font-medium leading-none"><motion.span>{text}</motion.span></p>
-                <p className="mt-2 text-[17px] text-white/85">customers walked in from WhatsApp</p>
+                <p className="mt-2 text-[17px] text-white/85">people walked in from WhatsApp</p>
               </motion.div>
             )}
           </AnimatePresence>

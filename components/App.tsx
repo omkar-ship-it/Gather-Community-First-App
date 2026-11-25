@@ -6,9 +6,10 @@ import { Store, useStore, type Screen } from "@/lib/store";
 import Dial from "./Dial";
 import Onboarding from "./Onboarding";
 import { Meet, Moments, NudgeBanner, Sending } from "./Peaks";
-import { Arrival, ChannelScreen, CommunityScreen, EventsScreen, PeopleScreen } from "./Community";
+import { Arrival, ChannelScreen, CommunityScreen, GroupScreen } from "./Community";
 import MoveIn from "./MoveIn";
 import { ChatScreen, EventScreen, MeScreen, PersonScreen, RoomScreen } from "./Screens";
+import StartCommunity from "./Start";
 import Sheets from "./Sheets";
 import { Events, Home, Messages, TabBar } from "./Tabs";
 
@@ -27,8 +28,8 @@ export default function App() {
 function view(sc: Screen) {
   switch (sc.t) {
     case "community": return <CommunityScreen id={sc.id} />;
-    case "people": return <PeopleScreen id={sc.id} groupId={sc.groupId} />;
-    case "events": return <EventsScreen id={sc.id} />;
+    case "group": return <GroupScreen id={sc.id} />;
+    case "start": return <StartCommunity />;
     case "channel": return <ChannelScreen id={sc.id} />;
     case "chat": return <ChatScreen thread={sc.thread} draft={sc.draft} />;
     case "person": return <PersonScreen id={sc.id} />;
@@ -44,7 +45,7 @@ function Layer({ sc, i, top, children }: { sc: Screen; i: number; top: boolean; 
   const { act } = useStore();
   const controls = useDragControls();
   const [flung, setFlung] = useState(false);
-  const f = sc.t === "community" ? sc.from : undefined;
+  const f = sc.t === "community" || sc.t === "group" ? sc.from : undefined;
   const closed = f ? { clipPath: `inset(${f.t}px ${f.r}px ${f.b}px ${f.l}px round 24px)`, opacity: 0.4 } : { x: "100%" };
   const open = f ? { clipPath: "inset(0px 0px 0px 0px round 0px)", opacity: 1, x: 0 } : { x: 0 };
   return (

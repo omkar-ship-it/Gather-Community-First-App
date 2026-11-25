@@ -5,11 +5,12 @@ import { Bell, BellOff, CalendarPlus, Check, Hash, IndianRupee, LogOut, Megaphon
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
 import { GroupGlance } from "./Community";
+import type { Plan } from "@/lib/data";
 import { pretty, type Kind } from "@/lib/ids";
-import { byFit, count, isHost, left, linkTo, maskEmail, maskMobile, openNow, pinOpen, waLink, useNow, useStore, when, type Sheet } from "@/lib/store";
+import { byFit, count, day as dayOf, isHost, money, left, linkTo, maskEmail, maskMobile, openNow, pinOpen, waLink, what, useNow, useStore, when, type Sheet } from "@/lib/store";
 import { Avatar, Glyph, IdTiles, SheetShell, firstOf, nameOf, spring, Faces, GroupMark } from "./ui";
 
-const LABEL: Record<Sheet["t"], string> = { plus: "What would you like to do?", post: "New post", host: "Host an event", pay: "Get a seat", split: "Split a bill", comments: "Replies", key: "Pass the key", link: "", peek: "Look inside", group: "About this group", newgroup: "Start a group", ask: "Ask on WhatsApp" };
+const LABEL: Record<Sheet["t"], string> = { plus: "What would you like to do?", post: "New post", host: "Host an event", pay: "Get a seat", split: "Split a bill", comments: "Replies", key: "Pass the key", link: "", peek: "Look inside", group: "About this group", newgroup: "Start a group", ask: "Ask on WhatsApp", join: "Membership", about: "About", switch: "Switch group" };
 
 export default function Sheets() {
   const { s, act } = useStore();
@@ -18,7 +19,7 @@ export default function Sheets() {
     <SheetShell open={Boolean(sh)} onClose={() => act.sheet(null)} label={sh?.t === "link" ? (sh.what === "mobile" ? "Change your mobile" : "Change your email") : sh ? LABEL[sh.t] : ""}>
       {sh?.t === "plus" && <PlusSheet />}
       {sh?.t === "post" && <PostSheet initial={sh.communityId} groupId={sh.groupId} announce={sh.announce} draft={sh.draft} />}
-      {sh?.t === "host" && <HostSheet initial={sh.communityId} />}
+      {sh?.t === "host" && <HostSheet initial={sh.communityId} groupId={sh.groupId} />}
       {sh?.t === "pay" && <PaySheet id={sh.eventId} />}
       {sh?.t === "split" && <SplitSheet />}
       {sh?.t === "comments" && <CommentsSheet id={sh.postId} />}
@@ -26,6 +27,9 @@ export default function Sheets() {
       {sh?.t === "peek" && <PeekSheet kind={sh.kind} id={sh.id} />}
       {sh?.t === "group" && <GroupSheet id={sh.id} />}
       {sh?.t === "newgroup" && <NewGroupSheet communityId={sh.communityId} />}
+      {sh?.t === "join" && <JoinSheet key={sh.id} kind={sh.kind} id={sh.id} />}
+      {sh?.t === "about" && <AboutSheet id={sh.id} />}
+      {sh?.t === "switch" && <SwitchSheet id={sh.id} />}
       {sh?.t === "ask" && <AskSheet id={sh.communityId} about={sh.about} />}
       {sh?.t === "link" && <LinkSheet what={sh.what} />}
     </SheetShell>
@@ -37,6 +41,7 @@ function PlusSheet() {
   const mine = s.communities.find((c) => c.joined && c.biz && c.hosts.includes("me"));
   const any = s.communities.some((c) => c.joined);
   const rows = [
+    { icon: Users, label: "Start a community", sub: "Run club, café, alumni, gym, anything", go: () => act.push({ t: "start" }), ok: true },
     { icon: Hash, label: "Dial a number", sub: "A person, a community, a group or a PIN", go: () => act.dial(true), ok: true },
     { icon: PenLine, label: "Write a post", sub: "To a community or one of its groups", go: () => act.sheet({ t: "post" }), ok: any },
     { icon: CalendarPlus, label: "Host an event", sub: "Comes with its own room and PIN", go: () => act.sheet({ t: "host" }), ok: any },
@@ -98,7 +103,7 @@ function PeekSheet({ kind, id }: { kind: "community" | "group"; id: string }) {
   const now = useNow(20_000);
   if (kind === "group") {
     const g = s.groups.find((x) => x.id === id)!;
-    return <><GroupGlance g={g} /><button type="button" className="btn btn-main mt-5 w-full" onClick={() => act.joinGroup(id)}>Join {g.name}</button></>;
+    return <><GroupGlance g={g} />{g.plan && <PlanBox plan={g.plan} />}<button type="button" className="btn btn-main mt-5 w-full" disabled={s.askedGroups.includes(id)} onClick={() => act.joinGroup(id, !g.ask && !g.plan)}>{s.askedGroups.includes(id) ? "Asked. Someone will let you in" : g.plan ? `Join, ${money(g.plan)}` : g.ask ? "Ask to join" : `Join ${g.name}`}</button></>;
   }
   const c = s.communities.find((x) => x.id === id)!;
   const groups = s.groups.filter((g) => g.communityId === id);
@@ -106,14 +111,76 @@ function PeekSheet({ kind, id }: { kind: "community" | "group"; id: string }) {
   const faces = byFit(s, c.members);
   return (
     <>
-      <div className="flex items-center gap-4"><Glyph c={c} size={62} /><div className="min-w-0"><p className="text-[21px] font-semibold leading-tight tracking-[-0.01em]">{c.name}</p><p className="text-[14.5px] text-[var(--soft)]">{count(c.size)} members{c.online ? ", every city" : ""}</p></div></div>
+      <div className="flex items-center gap-4"><Glyph c={c} size={62} /><div className="min-w-0"><p className="text-[21px] font-semibold leading-tight tracking-[-0.01em]">{c.name}</p><p className="text-[14.5px] text-[var(--soft)]">{what(c)}, {count(c.size)} people</p></div></div>
       <p className="mt-4 text-[16px] leading-snug">{c.about || c.blurb}</p>
       <div className="mt-4 flex items-center gap-3"><Faces ids={faces.slice(0, 4)} size={36} /><p className="text-[15px] leading-snug">{faces.slice(0, 2).map(firstOf).join(" and ")} {faces.length === 1 ? "is" : "are"} in here</p></div>
       <ul className="mt-4 overflow-hidden rounded-[20px] bg-[var(--sunk)]">
         {groups.slice(0, 4).map((g) => <li key={g.id} className="flex items-center gap-3 border-t border-white px-4 py-3 first:border-t-0"><GroupMark g={g} hue={c.hue} size={34} /><span className="min-w-0 flex-1 truncate text-[15.5px] font-medium">{g.name}</span><span className="text-[14px] text-[var(--soft)]">{count(g.size)}</span></li>)}
       </ul>
       {e && <p className="mt-3 text-[15px] leading-snug text-[var(--soft)]">{e.startsAt <= now ? "On now" : when(e.startsAt)}: {e.title}</p>}
-      <button type="button" className="btn btn-main mt-5 w-full" onClick={() => act.enter({ kind: "community", id })}>{c.open ? `Join ${c.name}` : "Ask to join"}</button>
+      {c.plan && <PlanBox plan={c.plan} />}
+      <button type="button" className="btn btn-main mt-5 w-full" onClick={() => act.enter({ kind: "community", id })}>{c.plan ? `Join, ${money(c.plan)}` : c.open ? `Join ${c.name}` : "Ask to join"}</button>
+    </>
+  );
+}
+
+function PlanBox({ plan }: { plan: Plan }) {
+  return <div className="mt-4 rounded-[20px] bg-[var(--sun)]/25 p-4"><p className="text-[17px] font-semibold">{money(plan)}</p><ul className="mt-2 grid gap-1.5">{plan.gets.map((x) => <li key={x} className="flex gap-2.5 text-[15px] leading-snug"><Check size={18} className="mt-0.5 flex-none text-[var(--brand)]" />{x}</li>)}</ul></div>;
+}
+
+/** Pay to belong. What you get is on the same screen as what it costs, and so is how to leave. */
+function JoinSheet({ kind, id }: { kind: "community" | "group"; id: string }) {
+  const { s, act } = useStore();
+  const g = s.groups.find((x) => x.id === id);
+  const c = s.communities.find((x) => x.id === (g?.communityId ?? id))!;
+  const plan = (kind === "group" ? g?.plan : c.plan)!;
+  const [how, setHow] = useState<"UPI" | "Card">("UPI");
+  const [busy, setBusy] = useState(false);
+  const go = () => { setBusy(true); window.setTimeout(() => { navigator.vibrate?.([15, 40, 25]); act.pay(kind, id); if (kind === "group") act.joinGroup(id, true); else act.enter({ kind: "community", id }); }, 1300); };
+  return (
+    <>
+      <div className="flex items-center gap-4">{g ? <GroupMark g={g} hue={c.hue} size={56} /> : <Glyph c={c} size={56} />}<div className="min-w-0"><p className="text-[20px] font-semibold leading-tight">{g?.name ?? c.name}</p><p className="text-[14.5px] text-[var(--soft)]">{g ? c.name : what(c)}</p></div></div>
+      <PlanBox plan={plan} />
+      <div className="mt-4 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Pay with">{(["UPI", "Card"] as const).map((h) => <button key={h} type="button" role="radio" aria-checked={how === h} onClick={() => setHow(h)} className="press min-h-[54px] rounded-2xl text-[16px] font-semibold" style={{ border: `2px solid ${how === h ? "var(--brand)" : "var(--line)"}`, color: how === h ? "var(--brand)" : undefined }}>{h}</button>)}</div>
+      <button type="button" className="btn btn-main mt-3 w-full" disabled={busy} onClick={go}>{busy ? "Paying" : `Pay ₹${plan.price.toLocaleString("en-IN")} and join`}</button>
+      <p className="mt-3 text-center text-[14px] leading-snug text-[var(--soft)]">Renews every {plan.per}. Stop any time, in one tap. Prototype: no money moves.</p>
+    </>
+  );
+}
+
+function AboutSheet({ id }: { id: string }) {
+  const { s, act } = useStore();
+  const c = s.communities.find((x) => x.id === id)!;
+  const m = s.paid[id];
+  const host = isHost(s, id);
+  const row = "press flex min-h-[56px] w-full items-center gap-4 text-left text-[16px] font-medium";
+  return (
+    <>
+      <div className="flex items-center gap-4"><Glyph c={c} size={60} /><div className="min-w-0"><p className="text-[21px] font-semibold leading-tight">{c.name}</p><p className="text-[14.5px] text-[var(--soft)]">{what(c)}, {count(c.size)} {c.size === 1 ? "person" : "people"}</p></div></div>
+      {(c.about || c.blurb) && <p className="mt-4 text-[16px] leading-snug">{c.about || c.blurb}</p>}
+      {m && c.plan && (
+        <div className="mt-4 rounded-[22px] bg-[var(--sun)] p-4"><p className="flex items-baseline justify-between"><span className="text-[17px] font-semibold">{m.ends ? "Ends" : "Renews"} {dayOf(m.until)}</span><span className="digits text-[16px]">{count(m.no)}</span></p><p className="mt-0.5 text-[14.5px]">{money(c.plan)}</p><button type="button" className="press mt-3 min-h-[44px] rounded-full bg-white/70 px-4 text-[14.5px] font-semibold" onClick={() => act.endPlan(id)}>{m.ends ? "Keep renewing" : "Stop renewing"}</button></div>
+      )}
+      {!m && c.plan && <PlanBox plan={c.plan} />}
+      <ul className="mt-3">
+        {c.hosts.filter((h) => h !== "me").slice(0, 2).map((h) => <li key={h}><button type="button" className={row} onClick={() => act.push({ t: "person", id: h })}><Avatar id={h} size={38} /><span><span className="block leading-tight">{nameOf(h)}</span><span className="text-[14px] font-normal text-[var(--soft)]">Host</span></span></button></li>)}
+        <li><button type="button" className={row} onClick={() => act.sheet({ t: "key", kind: "community", id })}><Share2 size={21} className="text-[var(--brand)]" />Pass the key<span className="ml-auto"><IdTiles digits={c.id} size="sm" /></span></button></li>
+        {host && <li><button type="button" className={row} onClick={() => act.push({ t: "movein", id })}><Shop size={21} className="text-[var(--brand)]" />Bring people in from WhatsApp</button></li>}
+        {c.biz && !host && <li><button type="button" className={row} onClick={() => act.sheet({ t: "ask", communityId: id })}><Megaphone size={21} className="text-[var(--brand)]" />Ask on WhatsApp</button></li>}
+      </ul>
+    </>
+  );
+}
+
+/** From one group to the next without going back first. */
+function SwitchSheet({ id }: { id: string }) {
+  const { s, act } = useStore();
+  const at = s.groups.find((x) => x.id === id)!;
+  const c = s.communities.find((x) => x.id === at.communityId)!;
+  return (
+    <>
+      <button type="button" onClick={() => act.go({ t: "community", id: c.id })} className="press flex min-h-[60px] w-full items-center gap-3.5 text-left"><Glyph c={c} size={42} /><span><span className="block text-[16.5px] font-semibold leading-tight">{c.name}</span><span className="text-[14px] text-[var(--soft)]">All groups</span></span></button>
+      <ul className="border-t border-[var(--line)] pt-1">{s.groups.filter((g) => g.communityId === c.id && g.joined).map((g) => <li key={g.id}><button type="button" aria-current={g.id === id ? "true" : undefined} onClick={() => act.go({ t: "group", id: g.id })} className="press flex min-h-[60px] w-full items-center gap-3.5 text-left"><GroupMark g={g} hue={c.hue} size={42} /><span className="min-w-0 flex-1"><span className="block truncate text-[16.5px]" style={{ fontWeight: g.id === id ? 600 : 500 }}>{g.name}</span><span className="text-[14px] text-[var(--soft)]">{count(g.size)} {g.size === 1 ? "person" : "people"}</span></span>{g.id === id ? <Check size={20} className="text-[var(--brand)]" /> : (s.unread[`f:${g.id}`] ?? 0) > 0 && <span className="h-3 w-3 rounded-full bg-[var(--sun)]" />}</button></li>)}</ul>
     </>
   );
 }
@@ -148,8 +215,9 @@ function GroupSheet({ id }: { id: string }) {
 <p className="flex items-center gap-2 text-[14.5px] text-[var(--soft)]"><Glyph c={c} size={24} /> Part of {c.name}</p>
       <div className="mt-4 flex items-center gap-4"><GroupMark g={g} hue={c.hue} size={58} /><div className="min-w-0"><p className="text-[21px] font-semibold leading-tight">{g.name}</p><p className="text-[14.5px] text-[var(--soft)]">{g.topic || "No topic yet"}</p></div></div>
       <span className="mt-4 block"><IdTiles digits={g.id} size="sm" /></span>
+      {g.plan && s.paid[id] && <div className="mt-4 rounded-[22px] bg-[var(--sun)] p-4"><p className="text-[17px] font-semibold">{s.paid[id].ends ? "Ends" : "Renews"} {dayOf(s.paid[id].until)}</p><p className="mt-0.5 text-[14.5px]">{money(g.plan)}</p><button type="button" className="press mt-3 min-h-[44px] rounded-full bg-white/70 px-4 text-[14.5px] font-semibold" onClick={() => act.endPlan(id)}>{s.paid[id].ends ? "Keep renewing" : "Stop renewing"}</button></div>}
       <ul className="mt-2">
-        <li><button type="button" className={row} onClick={() => act.push({ t: "people", id: c.id, groupId: id })}><Users size={21} className="text-[var(--brand)]" />See {count(g.size)} {g.size === 1 ? "person" : "people"}</button></li>
+        <li><button type="button" className={row} onClick={() => { act.sheet(null); act.spot(id, "people"); }}><Users size={21} className="text-[var(--brand)]" />See {count(g.size)} {g.size === 1 ? "person" : "people"}</button></li>
         <li><button type="button" className={row} onClick={() => act.sheet({ t: "key", kind: "group", id })}><Share2 size={21} className="text-[var(--brand)]" />Pass the key</button></li>
         <li><button type="button" className={row} aria-pressed={Boolean(g.muted)} onClick={() => act.mute(id)}>{g.muted ? <Bell size={21} className="text-[var(--brand)]" /> : <BellOff size={21} className="text-[var(--brand)]" />}{g.muted ? "Unmute" : "Mute"}</button></li>
         <li><button type="button" className={`${row} text-[var(--live)]`} onClick={() => { act.leaveGroup(id); act.say(`You left ${g.name}`); }}><LogOut size={21} />Leave group</button></li>
@@ -175,23 +243,29 @@ function NewGroupSheet({ communityId }: { communityId: string }) {
   );
 }
 
-function HostSheet({ initial }: { initial?: string }) {
+function HostSheet({ initial, groupId }: { initial?: string; groupId?: string }) {
   const { s, act } = useStore();
   const [where, setWhere] = useState(initial ?? s.communities.find((c) => c.joined)?.id ?? "");
   const [title, setTitle] = useState("");
   const [place, setPlace] = useState("");
   const [price, setPrice] = useState("");
   const [day, setDay] = useState(24);
+  const [to, setTo] = useState(groupId ?? "all");
+  const [weekly, setWeekly] = useState(false);
+  const groups = s.groups.filter((g) => g.communityId === where && g.joined);
+  const weekday = (h: number) => new Date(new Date().getTime() + h * 3_600_000).toLocaleDateString("en-IN", { weekday: "long" });
   const days = [[24, "Tomorrow"], [72, "In 3 days"], [168, "Next week"]] as const;
   return (
     <>
-      <Where value={where} onChange={setWhere} />
+      {!initial && <Where value={where} onChange={(id) => { setWhere(id); setTo("all"); }} />}
+      <div className={`scroll -mx-5 flex gap-2 overflow-x-auto px-5 ${initial ? "" : "mt-2.5"}`} role="radiogroup" aria-label="Who it's for">{[["all", "Everyone"], ...groups.map((g) => [g.id, g.name])].map(([v, l]) => <button key={v} type="button" role="radio" aria-checked={to === v} onClick={() => setTo(v)} className="press min-h-[44px] flex-none rounded-full px-4 text-[14.5px] font-medium" style={{ background: to === v ? "var(--sun)" : "var(--sunk)" }}>{l}</button>)}</div>
       <input autoFocus className="field mt-3" aria-label="What's happening?" placeholder="What's happening?" value={title} onChange={(e) => setTitle(e.target.value)} />
       <input className="field mt-2.5" aria-label="Where?" placeholder="Where?" value={place} onChange={(e) => setPlace(e.target.value)} />
       <div className="mt-2.5 grid grid-cols-3 gap-2" role="radiogroup" aria-label="When">{days.map(([h, l]) => <button key={h} type="button" role="radio" aria-checked={day === h} onClick={() => setDay(h)} className="press min-h-[48px] rounded-2xl text-[15px] font-medium" style={{ background: day === h ? "var(--brand)" : "var(--sunk)", color: day === h ? "#fff" : undefined }}>{l}</button>)}</div>
       <input className="field mt-2.5" inputMode="numeric" aria-label="Price in rupees" placeholder="Price in ₹, or leave empty for free" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, "").slice(0, 5))} />
+      <button type="button" role="switch" aria-checked={weekly} onClick={() => setWeekly(!weekly)} className="press mt-2.5 flex min-h-[50px] w-full items-center justify-between rounded-2xl bg-[var(--sunk)] px-4 text-[15.5px] font-medium">{weekly ? `Every ${weekday(day)}` : "Repeat every week"}<span className="flex h-7 w-12 items-center rounded-full p-1" style={{ background: weekly ? "var(--brand)" : "#cfc3cb", justifyContent: weekly ? "flex-end" : "flex-start" }}><motion.span layout transition={spring} className="h-5 w-5 rounded-full bg-white" /></span></button>
       <p className="mt-3 text-[14.5px] leading-snug text-[var(--soft)]">It gets a six-digit PIN an hour before. The room closes itself two hours after it starts.</p>
-      <button type="button" className="btn btn-main mt-3 w-full" disabled={title.trim().length < 3 || place.trim().length < 2 || !where} onClick={() => { act.host(where, title.trim(), place.trim(), Number(price) || 0, day); act.say("Your event is up"); }}>Create event</button>
+      <button type="button" className="btn btn-main mt-3 w-full" disabled={title.trim().length < 3 || place.trim().length < 2 || !where} onClick={() => { act.host(where, title.trim(), place.trim(), Number(price) || 0, day, to === "all" ? undefined : to, weekly ? `Every ${weekday(day)}` : undefined); act.say("Your event is up"); }}>Create event</button>
     </>
   );
 }
