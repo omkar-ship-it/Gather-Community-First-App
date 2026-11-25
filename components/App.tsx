@@ -63,15 +63,15 @@ function Phone() {
 
 /** Beside the phone on a desktop: what to dial. */
 function Guide() {
-  const rows: [string, string][] = [["992104", "A live event room, closing in minutes"], ["804219", "HSR Founders Circle"], ["846112", "Board Game Basement, not joined yet"], ["871503", "A community where a host says yes"], ["937420", "A room with 3,412 people in it"], ["73180612", "The Fundraising group"], ["61840275", "Makers Everywhere, 1.2 million people"], ["0422804219", "The same six digits, in Mumbai"], ["0422338415062", "Zoya in Mumbai, a stranger"], ["319044725", "Rohan, who writes first cheques"], ["228476195", "Sara, who's raising"]];
+  const rows: [string, string][] = [["992104", "A PIN: an event that's on now"], ["937420", "A PIN: a room with 3,412 people"], ["680421907", "HSR Founders Circle"], ["684611205", "Board Game Basement, not joined yet"], ["687150361", "A community where a host says yes"], ["618402755", "Makers Everywhere, 1.2 million people"], ["731806124", "The Fundraising group"], ["31904472311", "Rohan, who writes first cheques"], ["33841506796", "Zoya, a stranger"]];
   return (
     <div className="max-w-[300px]">
       <h2 className="text-[19px] font-semibold tracking-[-0.01em]">Try dialling</h2>
       <p className="mt-1 text-[15px] leading-snug text-[var(--soft)]">Open Dial a number and type one of these. Your keyboard works too.</p>
       <ul className="mt-4">
-        {rows.map(([d, l]) => <li key={d} className="border-t border-[#d6cad2] py-3"><span className="digits block text-[18px]">{d[0] === "0" ? `${d.slice(0, 4)} ${pretty(d.slice(4))}` : pretty(d)}</span><span className="text-[14.5px] text-[var(--soft)]">{l}</span></li>)}
+        {rows.map(([d, l]) => <li key={d} className="border-t border-[#d6cad2] py-3"><span className="digits block text-[18px]">{pretty(d)}</span><span className="text-[14.5px] text-[var(--soft)]">{l}</span></li>)}
       </ul>
-      <p className="mt-2 text-[14.5px] leading-snug text-[var(--soft)]">The first digit says what it is: 2 to 5 a person, 6 an online community, 7 a group, 8 a community, 9 a live room. 0 and a city code reaches another city.</p>
+      <p className="mt-2 text-[14.5px] leading-snug text-[var(--soft)]">The first digit says what it is: 2 to 5 a person, 6 a community, 7 a group, 8 or 9 a PIN.</p>
     </div>
   );
 }

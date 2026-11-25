@@ -1,37 +1,41 @@
 /**
- * Gather numbers, sized for billions of people and millions of communities.
+ * Gather numbers: universal, one per person for life, sized for billions.
  *
- * Numbers are unique within a city, the way phone numbers are within an area
- * code, so they stay short for the people near you. From elsewhere, dial 0
- * and the three-digit city code first. The first digit says what it is:
+ *   2–5  a person     11 digits  @482 9104 4076   4 billion
+ *   1    a person     12 digits  @148 291 044 071 10 billion, issued once 2–5 fill up
+ *   6    a community   9 digits  #680 421 907     100 million
+ *   7    a group       9 digits  #731 806 124     100 million
+ *   8 9  a PIN         6 digits  *992 104         200,000 open at once
+ *   0    a PIN         7 digits  *012 3456        a million more, for busy hours
  *
- *   0    another city     0 + 3-digit city code, then the number
- *   2–5  a person         9 digits  @482 910 448   last digit is a check digit
- *   6    an online        8 digits  #6184 0275     same number everywhere
- *        community
- *   7    a group          8 digits  #7318 0612
- *   8    a community      6 digits  #804 219
- *   9    a live room      6 digits  *992 104       reused after the event
- *   1    reserved
+ * The first digit fixes the length, so one pad dials anything and longer
+ * numbers can be issued later without changing a single existing one.
  *
- * The @ # * marks are how a number is written down. No phone number has one,
- * which matters because every bare length of digits is a phone number
- * somewhere. The marks never have to be typed.
+ * A number is permanent. A PIN is a door somebody has opened for a while: an
+ * event's, or a community's or group's for an hour. That is the only way six
+ * digits can serve millions of them: there are only a million six-digit
+ * numbers, so nobody gets to keep one.
+ *
+ * A person's number is random. It is tied to their mobile and email, never
+ * made from them, so it gives neither away. Its last digit is a check digit.
+ * 11 digits is one more than an Indian mobile, and 12 only ever starts with
+ * 1, which an Aadhaar number never does.
  */
 export type Kind = "person" | "group" | "community" | "room";
-export type Spec = { kind: Kind; chunks: number[]; length: number; mark: string; online?: boolean };
+export type Spec = { kind: Kind; chunks: number[]; length: number; mark: string };
 
-const spec = (kind: Kind, chunks: number[], mark: string, online = false): Spec => ({ kind, chunks, mark, online, length: chunks.reduce((a, b) => a + b, 0) });
-const PERSON = spec("person", [3, 3, 3], "@");
+const spec = (kind: Kind, chunks: number[], mark: string): Spec => ({ kind, chunks, mark, length: chunks.reduce((a, b) => a + b, 0) });
+const PERSON = spec("person", [3, 4, 4], "@");
+const PIN = spec("room", [3, 3], "*");
 const BY_FIRST: Record<string, Spec> = {
+  "0": spec("room", [3, 4], "*"),
+  "1": spec("person", [3, 3, 3, 3], "@"),
   "2": PERSON, "3": PERSON, "4": PERSON, "5": PERSON,
-  "6": spec("community", [4, 4], "#", true),
-  "7": spec("group", [4, 4], "#"),
-  "8": spec("community", [3, 3], "#"),
-  "9": spec("room", [3, 3], "*"),
+  "6": spec("community", [3, 3, 3], "#"),
+  "7": spec("group", [3, 3, 3], "#"),
+  "8": PIN, "9": PIN,
 };
 export const specOf = (digits: string): Spec | null => BY_FIRST[digits[0]] ?? null;
-export const kindOf = (digits: string) => specOf(digits)?.kind ?? null;
 
 export function chunked(digits: string): string[] {
   const out: string[] = [];
@@ -41,24 +45,10 @@ export function chunked(digits: string): string[] {
 }
 export const pretty = (digits: string) => `${specOf(digits)?.mark ?? ""}${chunked(digits).join(" ")}`;
 
-/**
- * Damm check digit: catches every single wrong digit and every swapped pair
- * of neighbours, so a slip of the thumb can't reach a stranger.
- */
+/** Damm check digit: catches every single wrong digit and every swapped pair of neighbours. */
 const DAMM = ["0317598642", "7092154863", "4206871359", "1750983426", "6123045978", "3674209581", "5869720134", "8945362017", "9438617205", "2581436790"];
 const damm = (d: string) => d.split("").reduce((s, x) => Number(DAMM[s][Number(x)]), 0);
 export const withCheck = (d: string) => d + damm(d);
 export const checks = (d: string) => damm(d) === 0;
 
-export type City = { code: string; name: string };
-/** Invented codes. Deliberately not STD codes: 080 plus a number would be a landline. */
-export const CITIES: City[] = [
-  { code: "418", name: "Bengaluru" }, { code: "422", name: "Mumbai" }, { code: "411", name: "Delhi" }, { code: "437", name: "Hyderabad" },
-  { code: "562", name: "London" }, { code: "633", name: "Singapore" }, { code: "715", name: "Lagos" }, { code: "209", name: "São Paulo" },
-];
-export const HOME = "418";
-export const cityOf = (code: string) => CITIES.find((c) => c.code === code) ?? null;
-/** The number that works from anywhere. Online communities have no city. */
-export const fullOf = (digits: string, city: string) => (specOf(digits)?.online ? digits : `0${city}${digits}`);
-
-export const KIND_LABEL: Record<Kind, string> = { person: "Person", group: "Group", community: "Community", room: "Live room" };
+export const KIND_LABEL: Record<Kind, string> = { person: "Person", group: "Group", community: "Community", room: "PIN" };

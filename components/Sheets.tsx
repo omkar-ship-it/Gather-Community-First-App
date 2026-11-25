@@ -4,24 +4,25 @@ import { motion } from "framer-motion";
 import { CalendarPlus, Check, Hash, IndianRupee, PenLine } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
-import { cityOf, pretty } from "@/lib/ids";
-import { linkTo, useStore, when, type Sheet } from "@/lib/store";
+import { pretty, type Kind } from "@/lib/ids";
+import { left, linkTo, maskEmail, maskMobile, pinOpen, useNow, useStore, when, type Sheet } from "@/lib/store";
 import { Avatar, Glyph, IdTiles, SheetShell, firstOf, nameOf, spring } from "./ui";
 
-const LABEL: Record<Sheet["t"], string> = { plus: "What would you like to do?", post: "New post", host: "Host an event", pay: "Get a seat", split: "Split a bill", comments: "Comments", key: "Pass the key" };
+const LABEL: Record<Sheet["t"], string> = { plus: "What would you like to do?", post: "New post", host: "Host an event", pay: "Get a seat", split: "Split a bill", comments: "Comments", key: "Pass the key", link: "" };
 
 export default function Sheets() {
   const { s, act } = useStore();
   const sh = s.sheet;
   return (
-    <SheetShell open={Boolean(sh)} onClose={() => act.sheet(null)} label={sh ? LABEL[sh.t] : ""}>
+    <SheetShell open={Boolean(sh)} onClose={() => act.sheet(null)} label={sh?.t === "link" ? (sh.what === "mobile" ? "Change your mobile" : "Change your email") : sh ? LABEL[sh.t] : ""}>
       {sh?.t === "plus" && <PlusSheet />}
       {sh?.t === "post" && <PostSheet initial={sh.communityId} />}
       {sh?.t === "host" && <HostSheet initial={sh.communityId} />}
       {sh?.t === "pay" && <PaySheet id={sh.eventId} />}
       {sh?.t === "split" && <SplitSheet />}
       {sh?.t === "comments" && <CommentsSheet id={sh.postId} />}
-      {sh?.t === "key" && <KeySheet kind={sh.kind} id={sh.id} zone={sh.zone} />}
+      {sh?.t === "key" && <KeySheet kind={sh.kind} id={sh.id} />}
+      {sh?.t === "link" && <LinkSheet what={sh.what} />}
     </SheetShell>
   );
 }
@@ -88,7 +89,7 @@ function HostSheet({ initial }: { initial?: string }) {
       <input className="field mt-2.5" aria-label="Where?" placeholder="Where?" value={place} onChange={(e) => setPlace(e.target.value)} />
       <div className="mt-2.5 grid grid-cols-3 gap-2" role="radiogroup" aria-label="When">{days.map(([h, l]) => <button key={h} type="button" role="radio" aria-checked={day === h} onClick={() => setDay(h)} className="press min-h-[48px] rounded-2xl text-[15px] font-medium" style={{ background: day === h ? "var(--brand)" : "var(--sunk)", color: day === h ? "#fff" : undefined }}>{l}</button>)}</div>
       <input className="field mt-2.5" inputMode="numeric" aria-label="Price in rupees" placeholder="Price in ₹, or leave empty for free" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, "").slice(0, 5))} />
-      <p className="mt-3 text-[14.5px] leading-snug text-[var(--soft)]">You&apos;ll get a six-digit room PIN. The room closes itself two hours after it starts.</p>
+      <p className="mt-3 text-[14.5px] leading-snug text-[var(--soft)]">It gets a six-digit PIN an hour before. The room closes itself two hours after it starts.</p>
       <button type="button" className="btn btn-main mt-3 w-full" disabled={title.trim().length < 3 || place.trim().length < 2 || !where} onClick={() => { act.host(where, title.trim(), place.trim(), Number(price) || 0, day); act.say("Your event is up"); }}>Create event</button>
     </>
   );
@@ -108,10 +109,9 @@ function PaySheet({ id }: { id: string }) {
           <p className="mt-3 text-[20px] font-semibold leading-tight">{e.title}</p>
           <p className="mt-1 text-[15px] text-white/80">{when(e.startsAt)}</p>
           <div className="my-4 border-t-2 border-dashed border-white/30" />
-          <p className="text-[14px] text-white/75">Your way into the room</p>
-          <span className="mt-2 block"><IdTiles digits={e.room} tone="dark" /></span>
+          <p className="text-[15px] leading-snug text-white/80">Your six-digit PIN arrives an hour before.</p>
         </motion.div>
-        <button type="button" className="btn btn-main mt-5 w-full" onClick={() => act.sheet({ t: "key", kind: "room", id: e.room, zone: e.zone })}>Bring a friend</button>
+        <button type="button" className="btn btn-main mt-5 w-full" onClick={() => act.sheet({ t: "key", kind: "room", id })}>Bring a friend</button>
         <button type="button" className="mt-1 min-h-[44px] w-full text-[15px] text-[var(--soft)]" onClick={() => act.sheet(null)}>Done</button>
       </div>
     );
@@ -152,26 +152,64 @@ function CommentsSheet({ id }: { id: string }) {
   );
 }
 
-/** Pass the key: an invitation that opens the exact door you came through. */
-function KeySheet({ kind, id, zone }: { kind: string; id: string; zone: string }) {
+/**
+ * Pass the key. The link and QR always work. A six-digit PIN is for saying
+ * out loud: an event has one while it's on, a community or group opens one
+ * for an hour.
+ */
+function KeySheet({ kind, id }: { kind: Kind; id: string }) {
   const { s, act } = useStore();
-  const c = s.communities.find((x) => x.num === id && x.zone === zone);
+  const now = useNow();
+  const c = s.communities.find((x) => x.id === id);
   const g = s.groups.find((x) => x.id === id);
-  const e = s.events.find((x) => x.room === id && x.zone === zone);
+  const e = s.events.find((x) => x.id === id);
   const name = c?.name ?? g?.name ?? e?.title.split(":")[0] ?? "";
+  const to = { kind, id };
+  const door = Object.entries(s.doors).find(([, d]) => d.to.id === id && d.until > now);
+  const pin = e ? (pinOpen(e, now) ? e.room : null) : (door?.[0] ?? null);
+  const until = e ? e.endsAt : door?.[1].until;
   return (
     <div className="text-center">
-      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={spring} className="rounded-[28px] bg-[var(--bg)] p-6">
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={spring} className="rounded-[28px] bg-[var(--bg)] p-5">
         <p className="text-[18px] font-semibold">{name}</p>
-        <span className="mx-auto mt-4 grid w-fit rounded-[20px] bg-white p-4"><QRCodeSVG value={linkTo(id, zone)} size={130} fgColor="#1e1020" /></span>
-        <span className="mt-5 block"><IdTiles digits={id} size="lg" /></span>
-        <p className="mt-3 text-[14px] text-[var(--soft)]">{zone ? <>In {cityOf(zone)?.name}. From anywhere else, <span className="digits">0{zone}</span> first</> : "The same number in every city"}</p>
+        <span className="mx-auto mt-3 grid w-fit rounded-[20px] bg-white p-3.5"><QRCodeSVG value={linkTo(to)} size={118} fgColor="#1e1020" /></span>
+        {!e && <span className="mt-4 block"><IdTiles digits={id} /></span>}
+        {pin ? (
+          <motion.div key={pin} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={spring} className="mt-4 border-t border-[var(--line)] pt-4">
+            <span className="block"><IdTiles digits={pin} size="lg" /></span>
+            <p className="mt-2.5 text-[14px] text-[var(--soft)]">Say it out loud. Closes in <span className="digits">{left((until ?? now) - now)}</span></p>
+          </motion.div>
+        ) : e ? (
+          <p className="mt-4 text-[14.5px] text-[var(--soft)]">The six-digit PIN opens an hour before.</p>
+        ) : (
+          <button type="button" className="btn btn-quiet mt-4 w-full !bg-white" onClick={() => act.openDoor(to)}>Open a six-digit PIN for an hour</button>
+        )}
       </motion.div>
-      <p className="mx-auto mt-4 max-w-[18rem] text-[15px] leading-snug text-[var(--soft)]">{kind === "room" ? "Works until the event ends, then it's gone." : "Whoever gets this walks straight in, not to a sign-up page."}</p>
       <button type="button" className="btn btn-main mt-4 w-full" onClick={async () => {
-        const text = `${s.me?.name.split(" ")[0]} passed you the key to ${name} on Gather: ${pretty(id)} ${linkTo(id, zone)}`;
+        const text = `${s.me?.name.split(" ")[0]} passed you the key to ${name} on Gather: ${linkTo(to)}`;
         try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); act.say("Invitation copied"); } } catch { /* they changed their mind */ }
       }}>Send the key</button>
+      <p className="mx-auto mt-3 max-w-[18rem] text-[14.5px] leading-snug text-[var(--soft)]">Whoever gets this sees {e ? "the event" : "who's inside"} before they sign up.</p>
     </div>
+  );
+}
+
+/** Replace the mobile or email. The other one vouches for you, and the number doesn't move. */
+function LinkSheet({ what }: { what: "mobile" | "email" }) {
+  const { s, act } = useStore();
+  const me = s.me!;
+  const [v, setV] = useState("");
+  const [code, setCode] = useState("");
+  const [sent, setSent] = useState(false);
+  const ok = what === "mobile" ? /^\d{10}$/.test(v.replace(/\D/g, "")) : /.+@.+\..+/.test(v);
+  const other = what === "mobile" ? maskEmail(me.email) : maskMobile(me.mobile);
+  return (
+    <>
+      <p className="text-[15.5px] leading-snug text-[var(--soft)]">{sent ? `We sent four digits to ${other}, to be sure it's you. Any four will do here.` : `Now ${what === "mobile" ? maskMobile(me.mobile) : maskEmail(me.email)}. Your number stays ${pretty(me.id)}.`}</p>
+      {sent
+        ? <input autoFocus className="field digits mt-4 text-center !text-[24px] tracking-[0.4em]" inputMode="numeric" aria-label="Verification code" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 4))} />
+        : <input autoFocus className="field mt-4" inputMode={what === "mobile" ? "numeric" : "email"} aria-label={what === "mobile" ? "New mobile" : "New email"} placeholder={what === "mobile" ? "New mobile" : "New email"} value={v} onChange={(e) => setV(e.target.value)} />}
+      <button type="button" className="btn btn-main mt-3 w-full" disabled={sent ? code.length < 4 : !ok} onClick={() => { if (!sent) return setSent(true); act.relink(what, v.trim()); act.say(`Changed. Still ${pretty(me.id)}`); }}>{sent ? "Confirm" : "Continue"}</button>
+    </>
   );
 }

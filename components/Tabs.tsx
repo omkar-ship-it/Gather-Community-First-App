@@ -1,9 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { cityOf } from "@/lib/ids";
 import { CalendarDays, Hash, MessageCircle, Plus, Users } from "lucide-react";
-import { ago, latest, left, overlap, person, useNow, useStore, when, type Tab } from "@/lib/store";
+import { ago, latest, left, maskEmail, overlap, person, useNow, useStore, when, type Tab } from "@/lib/store";
 import { Avatar, Glyph, IdTiles, Unread, firstOf, nameOf, spring } from "./ui";
 
 function Top({ title }: { title: string }) {
@@ -30,6 +29,12 @@ export function Home() {
     <div className="flex h-full flex-col">
       <Top title="Communities" />
       <div className="scroll flex-1 px-5 pb-32">
+        {s.me && !s.me.emailOk && (
+          <div className="mb-4 flex items-center gap-3 rounded-[20px] bg-[var(--brand-soft)] p-4">
+            <p className="min-w-0 flex-1 text-[15px] leading-snug">Confirm <b className="font-semibold">{maskEmail(s.me.email)}</b> and your number is yours for good.</p>
+            <button type="button" className="press min-h-[44px] flex-none rounded-full bg-[var(--brand)] px-4 text-[14.5px] font-semibold text-white" onClick={() => { act.confirmEmail(); act.say("Email confirmed"); }}>Confirm</button>
+          </div>
+        )}
         {live.map((e) => (
           <button key={e.id} type="button" onClick={() => act.push({ t: "room", id: e.id })} className="press mb-5 w-full overflow-hidden rounded-[24px] bg-[var(--ink)] p-5 text-left text-white">
             <span className="flex items-center gap-2 text-[14px] font-medium text-[#ffb3a5]"><span className="dot-live h-2 w-2 rounded-full bg-[var(--live)]" /> Live now<span className="digits ml-auto text-white">{left(e.endsAt - now)}</span></span>
@@ -43,7 +48,7 @@ export function Home() {
         {joined.length === 0 && s.asked.length === 0 && (
           <div className="mt-6 rounded-[24px] bg-[var(--card)] p-6 text-center">
             <p className="text-[19px] font-semibold">Nobody here yet</p>
-            <p className="mx-auto mt-1 max-w-[17rem] text-[15px] leading-snug text-[var(--soft)]">Got six digits from someone? That&apos;s your way in.</p>
+            <p className="mx-auto mt-1 max-w-[17rem] text-[15px] leading-snug text-[var(--soft)]">Got a PIN or a number from someone? That&apos;s your way in.</p>
             <button type="button" className="btn btn-main mt-5 w-full" onClick={() => act.dial(true)}>Dial a number</button>
           </div>
         )}
@@ -88,7 +93,7 @@ export function Messages() {
         {s.requests.map((id) => (
           <button key={id} type="button" onClick={() => act.push({ t: "chat", thread: `d:${id}` })} className="press mb-2.5 flex w-full items-center gap-3.5 rounded-[20px] border-2 border-dashed border-[var(--line)] p-4 text-left">
             <Avatar id={id} size={44} />
-            <span className="min-w-0 flex-1"><span className="block text-[16px] font-semibold">{firstOf(id)} would like to talk</span><span className="block truncate text-[14.5px] text-[var(--soft)]">{person(id)?.headline}, {cityOf(person(id)?.zone ?? "")?.name}</span></span>
+            <span className="min-w-0 flex-1"><span className="block text-[16px] font-semibold">{firstOf(id)} would like to talk</span><span className="block truncate text-[14.5px] text-[var(--soft)]">{person(id)?.headline}, {person(id)?.zone}</span></span>
           </button>
         ))}
         {quiet.map((id) => {

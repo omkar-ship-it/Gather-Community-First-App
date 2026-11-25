@@ -11,21 +11,20 @@ Open it on a phone, or on a desktop where it sits in a handset with a list of ID
 
 ## The number plan (`lib/ids.ts`)
 
-Numbers are unique within a city, like phone numbers within an area code. From another city, dial 0 and its three-digit code first. The first digit says what you're dialling.
+One universal number per person, for life, tied to one mobile and one email. Either can be replaced; the number never changes. It is random, so it reveals neither.
 
-| Starts with | Is | Digits | Room for, with 1,000 city codes |
+| Starts with | Is | Digits | Room for |
 | --- | --- | --- | --- |
-| 0 | another city | 0 + 3 | |
-| 1 | reserved | | |
-| 2–5 | a person, last digit is a check digit | 9 | 40 billion |
-| 6 | an online community, same in every city | 8 | 10 million |
-| 7 | a group | 8 | 10 billion |
-| 8 | a community | 6 | 100 million, 100,000 per city code |
-| 9 | a live room, reused after the event | 6 | 100 million open at once |
+| 2–5 | a person, last digit is a check digit | 11 | 4 billion |
+| 1 | a person, issued once those fill up | 12 | 10 billion more |
+| 6 | a community | 9 | 100 million |
+| 7 | a group | 9 | 100 million |
+| 8–9 | a PIN | 6 | 200,000 open at once |
+| 0 | a PIN, for busy hours | 7 | a million more |
 
-Written down, numbers carry a mark (`@482 910 440`, `#804 219`, `*992 104`) because any bare run of digits is a phone number somewhere. The marks never have to be typed. City codes here are invented and are not STD codes. A large metro can hold several codes.
+Numbers are permanent, PINs are not. There are only a million six-digit numbers, so nobody keeps one: an event holds a PIN from an hour before it starts until it ends, and a community or group can open one for an hour. The first digit fixes the length, so longer numbers can be added later without changing an existing one.
 
-Any number is also a link: `/?id=0418804219`.
+Written down, numbers carry a mark (`@482 9104 4076`, `#680 421 907`, `*992 104`) that never has to be typed. Links: `/?id=680421907`, `/?e=e1`.
 
 ## Where things are
 

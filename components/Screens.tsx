@@ -5,9 +5,9 @@ import { Bookmark, BookmarkCheck, Heart, MapPin, MessageCircle, Send, Share2 } f
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useRef, useState } from "react";
 import type { Event, Post } from "@/lib/data";
-import { HOME, cityOf, fullOf, pretty } from "@/lib/ids";
+import { pretty } from "@/lib/ids";
 import { INTENTS } from "@/lib/data";
-import { ago, byFit, count, left, linkTo, overlap, person, stranger, useNow, useStore, when } from "@/lib/store";
+import { ago, byFit, count, left, linkTo, maskEmail, maskMobile, overlap, person, pinOpen, stranger, useNow, useStore, when } from "@/lib/store";
 import { Avatar, Bar, Glyph, IdTiles, Tag, Unread, firstOf, nameOf, spring } from "./ui";
 
 // ------------------------------------------------------------ community
@@ -29,13 +29,13 @@ export function CommunityScreen({ id, initial = "feed" }: { id: string; initial?
   return (
     <div className="flex h-full flex-col bg-[var(--bg)]">
       <div className="flex-none text-white" style={{ background: `hsl(${c.hue} 46% 30%)` }}>
-        <Bar dark title="" right={<button type="button" className="press mr-2 flex min-h-[44px] items-center gap-2 rounded-full bg-white/15 px-4 text-[14.5px] font-medium" onClick={() => act.sheet({ t: "key", kind: "community", id: c.num, zone: c.zone })}><Share2 size={16} /> Pass the key</button>} />
+        <Bar dark title="" right={<button type="button" className="press mr-2 flex min-h-[44px] items-center gap-2 rounded-full bg-white/15 px-4 text-[14.5px] font-medium" onClick={() => act.sheet({ t: "key", kind: "community", id })}><Share2 size={16} /> Pass the key</button>} />
         <div className="px-5 pb-4">
           <div className="flex items-center gap-4">
             <span className="rounded-[22px] ring-[3px] ring-white/25"><Glyph c={c} size={64} /></span>
             <div className="min-w-0"><h1 className="text-[24px] font-semibold leading-tight tracking-[-0.02em]">{c.name}</h1><p className="mt-1 text-[14.5px] text-white/75">{count(c.size)} members{c.online ? ", every city" : ""}</p></div>
           </div>
-          <div className="mt-4 flex items-center justify-between gap-3"><p className="text-[15px] leading-snug text-white/85">{c.blurb}</p><IdTiles digits={c.num} size="sm" tone="dark" /></div>
+          <div className="mt-4 flex items-center justify-between gap-3"><p className="text-[15px] leading-snug text-white/85">{c.blurb}</p><IdTiles digits={c.id} size="sm" tone="dark" /></div>
         </div>
         <div className="flex px-3" role="tablist">
           {TABS.map((t) => (
@@ -49,7 +49,7 @@ export function CommunityScreen({ id, initial = "feed" }: { id: string; initial?
       <div className="scroll flex-1 px-4 pb-28 pt-4">
         {tab === "feed" && (
           <>
-            <button type="button" onClick={() => act.sheet({ t: "post", communityId: id })} className="press mb-3 flex min-h-[56px] w-full items-center gap-3 rounded-[20px] bg-[var(--card)] px-4 text-left text-[16px] text-[var(--soft)]"><Avatar id="me" size={34} /> Share something with {c.name.split(" ")[0]}</button>
+            <button type="button" onClick={() => act.sheet({ t: "post", communityId: id })} className="press mb-3 flex min-h-[56px] w-full items-center gap-3 rounded-[20px] bg-[var(--card)] px-4 text-left text-[16px] text-[var(--soft)]"><Avatar id="me" size={34} /> Share something here</button>
             {s.posts.filter((p) => p.communityId === id).map((p) => <PostCard key={p.id} post={p} now={now} />)}
           </>
         )}
@@ -223,7 +223,7 @@ export function ChatScreen({ thread, draft }: { thread: string; draft?: string }
   const c = s.communities.find((x) => x.id === g.communityId)!;
   return (
     <div className="flex h-full flex-col bg-[var(--bg)]">
-      <div className="flex-none border-b border-[var(--line)] bg-[var(--card)]"><Bar title={g.name} sub={`${c.name}, ${count(g.size)} people`} right={<button type="button" aria-label="Pass the key" className="press mr-2 grid h-11 w-11 place-items-center rounded-full" onClick={() => act.sheet({ t: "key", kind: "group", id, zone: c.zone || HOME })}><Share2 size={20} /></button>} /></div>
+      <div className="flex-none border-b border-[var(--line)] bg-[var(--card)]"><Bar title={g.name} sub={`${c.name}, ${count(g.size)} people`} right={<button type="button" aria-label="Pass the key" className="press mr-2 grid h-11 w-11 place-items-center rounded-full" onClick={() => act.sheet({ t: "key", kind: "group", id })}><Share2 size={20} /></button>} /></div>
       <Thread thread={thread} />
     </div>
   );
@@ -246,7 +246,6 @@ export function PersonScreen({ id }: { id: string }) {
           <p className="text-[16px] text-[var(--soft)]">{p.headline}</p>
           <p className="mt-1 flex items-center gap-1 text-[14.5px] text-[var(--soft)]"><MapPin size={15} /> {p.city}</p>
           <span className="mt-4"><IdTiles digits={id} /></span>
-          {p.zone !== s.me?.zone && <span className="mt-2 text-[14px] text-[var(--soft)]">{cityOf(p.zone)?.name}: dial <span className="digits">0{p.zone}</span> first</span>}
         </div>
         {o.line && (
           <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, ...spring }} className="mt-6 rounded-[24px] bg-[var(--sun)] p-5">
@@ -284,12 +283,22 @@ export function MeScreen() {
           <span className="flex justify-center"><Avatar id="me" size={76} /></span>
           <p className="mt-3 text-[24px] font-semibold tracking-[-0.02em]">{me.name}</p>
           <p className="text-[15px] text-[var(--soft)]">{me.headline}</p>
-          <span className="mx-auto mt-5 grid w-fit place-items-center rounded-[24px] bg-[var(--bg)] p-5"><QRCodeSVG value={linkTo(me.id, me.zone)} size={148} bgColor="transparent" fgColor="#1e1020" /></span>
+          <span className="mx-auto mt-5 grid w-fit place-items-center rounded-[24px] bg-[var(--bg)] p-5"><QRCodeSVG value={linkTo({ kind: "person", id: me.id })} size={148} bgColor="transparent" fgColor="#1e1020" /></span>
           <span className="mt-5 block"><IdTiles digits={me.id} size="md" /></span>
           <span className="mt-4 flex flex-wrap justify-center gap-1.5">{me.intents.map((i) => <Tag key={i}>{i}</Tag>)}</span>
         </motion.div>
-        <p className="mx-auto mt-5 max-w-[17rem] text-center text-[15px] leading-snug text-white/80">Anyone in {cityOf(me.zone)?.name} can dial this. From another city, <span className="digits">0{me.zone}</span> first. Your mobile and email stay private.</p>
-        <button type="button" className="btn btn-sun mt-5 w-full" onClick={async () => { const t = `${pretty(me.id)} (${fullOf(me.id, me.zone)} from anywhere)`; try { await navigator.clipboard.writeText(t); act.say("Number copied"); } catch { act.say(pretty(me.id)); } }}>Copy my number</button>
+        <p className="mx-auto mt-5 max-w-[17rem] text-center text-[15px] leading-snug text-white/80">The same number everywhere, for life. Your mobile and email stay private.</p>
+        <button type="button" className="btn btn-sun mt-5 w-full" onClick={async () => { try { await navigator.clipboard.writeText(pretty(me.id)); act.say("Number copied"); } catch { act.say(pretty(me.id)); } }}>Copy my number</button>
+        <section className="mt-4 rounded-[24px] bg-white/10 p-5">
+          <h2 className="text-[16px] font-semibold">Tied to</h2>
+          {([["mobile", maskMobile(me.mobile), "Confirmed"], ["email", maskEmail(me.email), me.emailOk ? "Confirmed" : "Not confirmed yet"]] as const).map(([what, v, st]) => (
+            <div key={what} className="mt-3 flex items-center justify-between gap-3">
+              <span className="min-w-0"><span className="digits block truncate text-[16px]">{v}</span><span className="text-[14px] text-white/65">{st}</span></span>
+              <button type="button" className="press min-h-[44px] flex-none rounded-full bg-white/15 px-4 text-[14.5px] font-medium" onClick={() => (what === "email" && !me.emailOk ? (act.confirmEmail(), act.say("Email confirmed")) : !me.emailOk ? act.say("Confirm your email first") : act.sheet({ t: "link", what }))}>{what === "email" && !me.emailOk ? "Confirm" : "Change"}</button>
+            </div>
+          ))}
+          <p className="mt-4 text-[14.5px] leading-snug text-white/75">Change either one and your number stays the same. Lose one and the other brings it back.</p>
+        </section>
         <button type="button" className="mt-2 min-h-[44px] w-full text-[14.5px] text-white/70" onClick={act.restart}>Start the prototype over</button>
       </div>
     </div>
@@ -306,7 +315,7 @@ export function EventScreen({ id }: { id: string }) {
   return (
     <div className="flex h-full flex-col bg-[var(--bg)]">
       <div className="flex-none pb-6 text-white" style={{ background: `hsl(${c.hue} 46% 30%)` }}>
-        <Bar dark title="" right={<button type="button" className="press mr-2 flex min-h-[44px] items-center gap-2 rounded-full bg-white/15 px-4 text-[14.5px] font-medium" onClick={() => act.sheet({ t: "key", kind: "room", id: e.room, zone: e.zone })}><Share2 size={16} /> Pass the key</button>} />
+        <Bar dark title="" right={<button type="button" className="press mr-2 flex min-h-[44px] items-center gap-2 rounded-full bg-white/15 px-4 text-[14.5px] font-medium" onClick={() => act.sheet({ t: "key", kind: "room", id })}><Share2 size={16} /> Pass the key</button>} />
         <div className="px-5"><p className="text-[15px] text-white/80">{c.name}</p><h1 className="mt-1 text-[29px] font-semibold leading-[1.1] tracking-[-0.025em]">{e.title}</h1></div>
       </div>
       <div className="scroll flex-1 px-5 pb-32 pt-5">
@@ -318,8 +327,8 @@ export function EventScreen({ id }: { id: string }) {
           <div className="mt-3 flex flex-wrap gap-2.5">{e.ticket && <Avatar id="me" size={44} />}{e.going.map((m) => <button key={m} type="button" aria-label={nameOf(m)} className="press" onClick={() => act.push({ t: "person", id: m })}><Avatar id={m} size={44} /></button>)}</div>
         </section>
         <section className="mt-3 rounded-[24px] border-2 border-dashed border-[var(--line)] p-5">
-          <div className="flex items-center justify-between gap-3"><h2 className="text-[16px] font-semibold">The room</h2><IdTiles digits={e.room} /></div>
-          <p className="mt-2 text-[14.5px] leading-snug text-[var(--soft)]">Opens when the event starts. Closes for good at {new Date(e.endsAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}. Keep who you meet.</p>
+          <div className="flex items-center justify-between gap-3"><h2 className="text-[16px] font-semibold">The room</h2>{pinOpen(e, now) && <IdTiles digits={e.room} />}</div>
+          <p className="mt-2 text-[14.5px] leading-snug text-[var(--soft)]">{pinOpen(e, now) ? "Anyone with this PIN can walk in." : "Its six-digit PIN appears an hour before."} Closes for good at {new Date(e.endsAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}. Keep who you meet.</p>
         </section>
       </div>
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[var(--bg)] via-[var(--bg)] to-transparent px-5 pb-[max(env(safe-area-inset-bottom),18px)] pt-8">

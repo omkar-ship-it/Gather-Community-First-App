@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { COMMUNITIES, FITS, GROUPS, PEOPLE, makeEvents, makePosts, makeThreads, uid, type Community, type Event, type Group, type Me, type Msg, type Person, type Post } from "./data";
-import { HOME, checks, cityOf, fullOf, specOf, type Kind } from "./ids";
+import { checks, pretty, specOf, type Kind } from "./ids";
 
 export type Screen =
   | { t: "community"; id: string; tab?: "feed" | "groups" | "members" | "events" }
@@ -18,7 +18,8 @@ export type Sheet =
   | { t: "pay"; eventId: string }
   | { t: "split" }
   | { t: "comments"; postId: string }
-  | { t: "key"; kind: Kind; id: string; zone: string };
+  | { t: "key"; kind: Kind; id: string }
+  | { t: "link"; what: "mobile" | "email" };
 export type Tab = "communities" | "messages" | "events";
 /** `id` is the internal id of whatever the number reached. */
 export type Target = { kind: Kind; id: string };
@@ -31,6 +32,12 @@ type State = {
   dial: boolean;
   /** Digits the pad opens with: an invite link or a scanned QR. */
   dialWith: string;
+  /** What an invite link points at. */
+  arrive: Target | null;
+  /** PINs opened by communities and groups: a door, for an hour. */
+  doors: Record<string, { to: Target; until: number }>;
+  /** Mobile and email given at sign-up. */
+  contact: { mobile: string; email: string };
   /** Communities waiting on a host's yes. */
   asked: string[];
   tab: Tab;
@@ -49,15 +56,17 @@ type State = {
   requests: string[];
 };
 
-const SAMPLE_ME: Me = { id: "482910440", zone: HOME, name: "Omkar", headline: "Building something new", intents: ["Raising seed", "Building with AI", "New in town"], hue: 300 };
+const SAMPLE_ME: Me = { id: "48291044076", zone: "Bengaluru", mobile: "9876543210", email: "omkar@example.com", emailOk: true, name: "Omkar", headline: "Building something new", intents: ["Raising seed", "Building with AI", "New in town"], hue: 300 };
 
 function fresh(): State {
   const now = Date.now();
-  const link = (new URLSearchParams(window.location.search).get("id") ?? "").replace(/\D/g, "").slice(0, 13);
+  const link = (new URLSearchParams(window.location.search).get("id") ?? "").replace(/\D/g, "").slice(0, 12);
+  const ev = new URLSearchParams(window.location.search).get("e");
+  const arrive: Target | null = ev && makeEvents(now).some((e) => e.id === ev) ? { kind: "room", id: ev } : null;
   return {
-    me: null, pending: null, auth: "welcome", dial: link.length > 0, dialWith: link, asked: [], tab: "communities", stack: [], sheet: null, toast: null,
+    me: null, pending: null, auth: "welcome", dial: link.length > 0 || Boolean(arrive), dialWith: link, arrive, doors: {}, contact: { mobile: "", email: "" }, asked: [], tab: "communities", stack: [], sheet: null, toast: null,
     communities: COMMUNITIES, groups: GROUPS, posts: makePosts(now), events: makeEvents(now), threads: makeThreads(now),
-    unread: { "g:74211730": 3, "g:73180612": 1, "g:76302805": 2, "d:319044725": 1 }, typing: {}, saved: ["360258410"], requests: ["338415062"],
+    unread: { "g:742117308": 3, "g:731806124": 1, "g:763028052": 2, "d:31904472311": 1 }, typing: {}, saved: ["36025841840"], requests: ["33841506796"],
   };
 }
 
@@ -90,7 +99,7 @@ function useStoreValue() {
       patch((x) => {
         const me = via ?? x.me;
         if (!me) return { pending: t, auth: "contact", dial: false };
-        const base = { dial: false, dialWith: "", sheet: null, pending: null };
+        const base = { dial: false, dialWith: "", arrive: null, sheet: null, pending: null };
         if (t.kind === "person") return { ...base, stack: [{ t: "person", id: t.id } as Screen] };
         if (t.kind === "community") {
           const c = x.communities.find((v) => v.id === t.id)!;
@@ -114,12 +123,12 @@ function useStoreValue() {
       pop: () => patch((x) => ({ stack: x.stack.slice(0, -1) })),
       tab: (tab: Tab) => patch(() => ({ tab, stack: [], sheet: null })),
       sheet: (sheet: Sheet | null) => patch(() => ({ sheet })),
-      dial: (dial: boolean) => patch(() => ({ dial, dialWith: "", sheet: null })),
+      dial: (dial: boolean) => patch(() => ({ dial, dialWith: "", arrive: null, sheet: null })),
       auth: (auth: State["auth"]) => patch(() => ({ auth })),
-      lived: () => patch(() => ({ ...fresh(), dial: false, dialWith: "", me: SAMPLE_ME, auth: null, events: makeEvents(Date.now()).map((e) => (e.id === "e1" ? { ...e, ticket: true } : e)) })),
-      restart: () => set({ ...fresh(), dial: false, dialWith: "" }),
+      lived: () => patch(() => ({ ...fresh(), dial: false, dialWith: "", arrive: null, me: SAMPLE_ME, auth: null, events: makeEvents(Date.now()).map((e) => (e.id === "e1" ? { ...e, ticket: true } : e)) })),
+      restart: () => set({ ...fresh(), dial: false, dialWith: "", arrive: null }),
       signUp: (name: string, intents: string[]) => patch((x) => ({
-        me: { ...SAMPLE_ME, name, intents, headline: intents[0] ?? "New to Gather" }, auth: "reveal",
+        me: { ...SAMPLE_ME, ...x.contact, emailOk: false, name, intents, headline: intents[0] ?? "New to Gather" }, auth: "reveal",
         communities: x.communities.map((c) => ({ ...c, joined: false })), unread: {}, saved: [], requests: [],
         threads: Object.fromEntries(Object.entries(x.threads).filter(([k]) => !k.startsWith("d:"))),
       })),
@@ -143,7 +152,7 @@ function useStoreValue() {
         d.setHours(19, 0, 0, 0);
         const startsAt = d.getTime();
         const room = `9${String(10000 + ((x.events.length * 7919 + title.length * 131) % 89999)).padStart(5, "0")}`;
-        const ev: Event = { id: uid(), zone: HOME, inside: 0, communityId, title, blurb: "Hosted by you.", place, startsAt, endsAt: startsAt + 2 * 3_600_000, price, room, host: "me", going: [], seats: 20, ticket: true, dissolved: false };
+        const ev: Event = { id: uid(), inside: 0, communityId, title, blurb: "Hosted by you.", place, startsAt, endsAt: startsAt + 2 * 3_600_000, price, room, host: "me", going: [], seats: 20, ticket: true, dissolved: false };
         return { events: [...x.events, ev], sheet: null, stack: [...x.stack.filter((v) => v.t === "community"), { t: "event", id: ev.id }] };
       }),
       ticket: (id: string) => patch((x) => ({ events: x.events.map((e) => (e.id === id ? { ...e, ticket: true } : e)) })),
@@ -152,6 +161,17 @@ function useStoreValue() {
       answer: (id: string, yes: boolean) => patch((x) => {
         const { [`d:${id}`]: gone, ...rest } = x.threads;
         return { requests: x.requests.filter((v) => v !== id), ...(yes ? {} : { threads: gone ? rest : x.threads, stack: x.stack.slice(0, -1) }) };
+      }),
+      contact: (mobile: string, email: string) => patch(() => ({ contact: { mobile, email }, auth: "code" })),
+      /** The mobile already has a number: sign in to it, and carry on to wherever they were going. */
+      back: () => { const t = { ...fresh(), dial: false, dialWith: "", arrive: null, me: SAMPLE_ME, auth: null }; patch((x) => ({ ...t, pending: x.pending })); },
+      welcomeBack: () => say(`Welcome back. Still ${pretty(SAMPLE_ME.id)}`),
+      confirmEmail: () => patch((x) => ({ me: x.me && { ...x.me, emailOk: true } })),
+      relink: (what: "mobile" | "email", v: string) => patch((x) => ({ me: x.me && { ...x.me, [what]: v }, sheet: null })),
+      openDoor: (to: Target) => patch((x) => {
+        let pin = "";
+        do pin = `8${String(Math.floor(Math.random() * 100_000)).padStart(5, "0")}`; while (x.doors[pin]);
+        return { doors: { ...x.doors, [pin]: { to, until: Date.now() + 3_600_000 } } };
       }),
       hurry: (id: string) => patch((x) => ({ events: x.events.map((e) => (e.id === id ? { ...e, endsAt: Date.now() + 12_000 } : e)) })),
       dissolve: (id: string) => patch((x) => ({ events: x.events.map((e) => (e.id === id ? { ...e, dissolved: true } : e)) })),
@@ -162,7 +182,7 @@ function useStoreValue() {
   const alive = Boolean(s.me) && s.auth === null;
   useEffect(() => {
     if (!alive) return;
-    const lines: [string, string, string][] = [["g:76302805", "360258410", "I'm in for the short one"], ["g:77921561", "382604157", "Buns: three left"], ["g:73180612", "319044725", "Terms sheet glossary is in the files"], ["g:74211730", "255183069", "Two reviews done, one slot left"]];
+    const lines: [string, string, string][] = [["g:763028052", "36025841840", "I'm in for the short one"], ["g:779215613", "38260415924", "Buns: three left"], ["g:731806124", "31904472311", "Terms sheet glossary is in the files"], ["g:742117308", "25518306683", "Two reviews done, one slot left"]];
     const ids = lines.map(([thread, by, text], i) => window.setTimeout(() => patch((x) => {
       const g = x.groups.find((v) => `g:${v.id}` === thread);
       if (!x.communities.find((c) => c.id === g?.communityId)?.joined) return {};
@@ -198,23 +218,21 @@ export function useNow(every = 1000) {
 // ------------------------------------------------------------ lookups
 export const person = (id: string): Person | null => PEOPLE.find((x) => x.id === id) ?? null;
 
-/** What a number reaches in a city. A person's last digit is checked before anyone is looked up. */
-export function resolve(s: State, digits: string, zone: string): Target | null {
+/** What a number or PIN reaches right now. A person's check digit is tested before anyone is looked up. */
+export function resolve(s: State, digits: string): Target | null {
   const sp = specOf(digits);
   if (!sp || digits.length !== sp.length) return null;
-  if (sp.kind === "person") { const p = PEOPLE.find((x) => x.id === digits && x.zone === zone); return p && checks(digits) ? { kind: "person", id: p.id } : null; }
-  if (sp.kind === "community") { const c = s.communities.find((x) => x.num === digits && (sp.online || x.zone === zone)); return c ? { kind: "community", id: c.id } : null; }
-  if (sp.kind === "group") return zone === HOME && s.groups.some((x) => x.id === digits) ? { kind: "group", id: digits } : null;
-  const e = s.events.find((x) => x.room === digits && x.zone === zone && !x.dissolved);
+  if (sp.kind === "person") return checks(digits) && PEOPLE.some((x) => x.id === digits) ? { kind: "person", id: digits } : null;
+  if (sp.kind === "community") return s.communities.some((x) => x.id === digits) ? { kind: "community", id: digits } : null;
+  if (sp.kind === "group") return s.groups.some((x) => x.id === digits) ? { kind: "group", id: digits } : null;
+  const door = s.doors[digits];
+  if (door && door.until > Date.now()) return door.to;
+  const e = s.events.find((x) => x.room === digits && pinOpen(x, Date.now()));
   return e ? { kind: "room", id: e.id } : null;
 }
 
-/** Split "0418804219" into its city and number. A bare number is in the city you're in. */
-export function parseFull(digits: string, fallback: string): { zone: string; digits: string } {
-  if (digits[0] !== "0") return { zone: fallback, digits };
-  const code = digits.slice(1, 4);
-  return cityOf(code) ? { zone: code, digits: digits.slice(4) } : { zone: fallback, digits: "" };
-}
+/** An event holds its PIN from an hour before it starts until it ends. */
+export const pinOpen = (e: Event, now: number) => !e.dissolved && now >= e.startsAt - 3_600_000 && now < e.endsAt;
 
 /** Do they know each other at all? If not, a first message is a request. */
 export const stranger = (s: State, id: string) => {
@@ -227,7 +245,7 @@ export const count = (n: number) => (n < 10_000 ? n.toLocaleString("en-IN") : ne
 
 /** Whoever fits you best, first. At a million members, order is the whole experience. */
 export const byFit = (s: State, ids: string[]) => {
-  const score = (id: string) => { const p = PEOPLE.find((x) => x.id === id); if (!p) return 0; const o = overlap(s, p); return (o.fits ? 4 : 0) + (p.zone === (s.me?.zone ?? HOME) ? 2 : 0) + o.communities.filter((c) => c.size < 5000).length; };
+  const score = (id: string) => { const p = PEOPLE.find((x) => x.id === id); if (!p) return 0; const o = overlap(s, p); return (o.fits ? 4 : 0) + (p.zone === s.me?.zone ? 2 : 0) + o.communities.filter((c) => c.size < 5000).length; };
   return [...ids].sort((a, b) => score(b) - score(a));
 };
 
@@ -256,8 +274,12 @@ export function latest(s: State, c: Community) {
   return { best, unread };
 }
 
-/** The link and QR behind every key: opens straight onto what the ID is. */
-export const linkTo = (digits: string, zone: string) => `${window.location.origin}/?id=${fullOf(digits, zone)}`;
+/** The link and QR behind every key: opens straight onto what it's for. */
+export const linkTo = (t: Target) => `${window.location.origin}/?${t.kind === "room" ? "e" : "id"}=${t.id}`;
+
+/** Enough to recognise your own, not enough to learn someone else's. */
+export const maskMobile = (m: string) => `+91 ••••• •${m.replace(/\D/g, "").slice(-4)}`;
+export const maskEmail = (e: string) => e.replace(/^(.).*?(@.*)$/, "$1•••$2");
 
 export const ago = (at: number, now: number) => {
   const m = Math.floor((now - at) / 60_000);

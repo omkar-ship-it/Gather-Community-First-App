@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { INTENTS } from "@/lib/data";
 import { chunked } from "@/lib/ids";
-import { person, useStore, type Target } from "@/lib/store";
+import { maskMobile, person, useStore, type Target } from "@/lib/store";
 import { Avatar, spring } from "./ui";
 
 function destination(s: ReturnType<typeof useStore>["s"], t: Target | null) {
@@ -37,7 +37,7 @@ function Welcome() {
       <div className="relative flex flex-1 items-center justify-center" aria-hidden="true">
         {[0, 0.8, 1.6].map((d) => <span key={d} className="ripple absolute h-40 w-40 rounded-full border-2 border-white/40" style={{ animationDelay: `${d}s` }} />)}
         <div className="relative h-[230px] w-[230px]">
-          {["319044725", "255183069", "541033870", "382604157", "477319203", "228476195"].map((id, i) => {
+          {["31904472311", "25518306683", "54103387403", "38260415924", "47731920156", "22847619537"].map((id, i) => {
             const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
             return (
               <motion.span key={id} className="absolute" style={{ left: 115 + 92 * Math.cos(a) - 30, top: 115 + 92 * Math.sin(a) - 30 }} initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ ...spring, delay: 0.1 + i * 0.07 }}>
@@ -72,23 +72,35 @@ function Frame({ title, sub, children, foot }: { title: string; sub: string; chi
 
 function Contact() {
   const { s, act } = useStore();
-  const [v, setV] = useState("");
+  const [mobile, setMobile] = useState("");
+  const [email, setEmail] = useState("");
   const to = destination(s, s.pending);
+  const m = mobile.replace(/\D/g, "").slice(-10);
+  const ok = /^[6-9]\d{9}$/.test(m) && /.+@.+\..+/.test(email.trim());
   return (
-    <Frame title={to ? `One step from ${to}` : "Your number stays yours"} sub="We check your mobile or email once. Nobody on Gather ever sees it: they get your Gather number instead."
-      foot={<button type="button" className="btn btn-main w-full" disabled={v.trim().length < 5} onClick={() => act.auth("code")}>Send me a code</button>}>
-      <input className="field" autoFocus placeholder="Mobile or email" aria-label="Mobile or email" value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => e.key === "Enter" && v.trim().length >= 5 && act.auth("code")} />
+    <Frame title={to ? `One step from ${to}` : "Tie your number to you"} sub="One mobile and one email hold one Gather number, for life. Nobody you meet sees either."
+      foot={<button type="button" className="btn btn-main w-full" disabled={!ok} onClick={() => act.contact(m, email.trim())}>Text me a code</button>}>
+      <input className="field" autoFocus inputMode="tel" autoComplete="tel" placeholder="Mobile" aria-label="Mobile" value={mobile} onChange={(e) => setMobile(e.target.value)} />
+      <input className="field mt-3" inputMode="email" autoComplete="email" placeholder="Email" aria-label="Email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && ok && act.contact(m, email.trim())} />
+      <p className="mt-4 text-[14.5px] leading-snug text-[var(--soft)]">Already have one? Use the same mobile. Here, 98765 43210 belongs to Omkar.</p>
     </Frame>
   );
 }
 
 function Code() {
-  const { act } = useStore();
+  const { s, act } = useStore();
   const [v, setV] = useState("");
+  const go = () => {
+    if (s.contact.mobile !== "9876543210") return act.auth("profile");
+    const t = s.pending;
+    act.back();
+    if (t) act.enter(t);
+    act.welcomeBack();
+  };
   return (
-    <Frame title="Four digits" sub="This is a prototype, so any four will do." foot={<button type="button" className="min-h-[44px] text-[14.5px] font-medium text-[var(--soft)]" onClick={() => act.auth("contact")}>Use a different mobile or email</button>}>
+    <Frame title="Four digits" sub={`Sent to ${maskMobile(s.contact.mobile)}. This is a prototype, so any four will do.`} foot={<button type="button" className="min-h-[44px] text-[14.5px] font-medium text-[var(--soft)]" onClick={() => act.auth("contact")}>Use a different mobile</button>}>
       <label className="relative flex gap-3">
-        <input className="absolute inset-0 opacity-0" inputMode="numeric" autoComplete="one-time-code" autoFocus aria-label="Verification code" value={v} onChange={(e) => { const d = e.target.value.replace(/\D/g, "").slice(0, 4); setV(d); if (d.length === 4) window.setTimeout(() => act.auth("profile"), 260); }} />
+        <input className="absolute inset-0 opacity-0" inputMode="numeric" autoComplete="one-time-code" autoFocus aria-label="Verification code" value={v} onChange={(e) => { const d = e.target.value.replace(/\D/g, "").slice(0, 4); setV(d); if (d.length === 4) window.setTimeout(go, 260); }} />
         {[0, 1, 2, 3].map((i) => <span key={i} className="digits grid h-[68px] w-[60px] place-items-center rounded-2xl bg-[var(--card)] text-[28px]" style={{ border: `2px solid ${v.length === i ? "var(--brand)" : "var(--line)"}` }}>{v[i] ?? ""}</span>)}
       </label>
     </Frame>
@@ -124,7 +136,7 @@ function Reveal() {
   const [spin, setSpin] = useState(0);
   useEffect(() => {
     const roll = window.setInterval(() => setSpin((x) => x + 1), 55);
-    const land = window.setInterval(() => { ref.current += 1; setShown(ref.current); navigator.vibrate?.(6); if (ref.current >= id.length) { window.clearInterval(land); window.clearInterval(roll); navigator.vibrate?.([20, 40, 40]); } }, 260);
+    const land = window.setInterval(() => { ref.current += 1; setShown(ref.current); navigator.vibrate?.(6); if (ref.current >= id.length) { window.clearInterval(land); window.clearInterval(roll); navigator.vibrate?.([20, 40, 40]); } }, 220);
     return () => { window.clearInterval(roll); window.clearInterval(land); };
   }, [id.length]);
   const to = destination(s, s.pending);
@@ -132,16 +144,16 @@ function Reveal() {
     <div className="relative flex flex-1 flex-col items-center overflow-hidden bg-[var(--ink)] px-6 pb-[max(env(safe-area-inset-bottom),26px)] text-center text-white">
       <div className="flex flex-1 flex-col items-center justify-center">
         <p className="text-[17px] text-white/70">{done ? `${s.me!.name.split(" ")[0]}, this one's yours` : "Finding your number"}</p>
-        <div className="relative mt-6 flex items-center gap-2">
+        <div className="relative mt-6 flex items-center gap-1.5">
           {done && [0, 0.5, 1].map((d) => <span key={d} className="ripple absolute left-1/2 top-1/2 -ml-24 -mt-24 h-48 w-48 rounded-full border-2 border-[var(--sun)]" style={{ animationDelay: `${d}s` }} aria-hidden="true" />)}
           {chunked(id).map((part, pi) => (
-            <motion.span key={pi} className="digits relative flex rounded-full px-4 py-3 text-[30px] font-medium" animate={{ background: done ? "#FFB627" : "rgba(255,255,255,0.10)", color: done ? "#1E1020" : "#ffffff" }} transition={{ duration: 0.4 }}>
-              {part.split("").map((d, i) => { const n = pi * 3 + i; return <span key={i} className="inline-block w-[0.66em]" style={{ opacity: n < shown ? 1 : 0.35 }}>{n < shown ? d : (spin * 7 + n * 3) % 10}</span>; })}
+            <motion.span key={pi} className="digits relative flex rounded-full px-3.5 py-3 text-[clamp(21px,6.6vw,27px)] font-medium" animate={{ background: done ? "#FFB627" : "rgba(255,255,255,0.10)", color: done ? "#1E1020" : "#ffffff" }} transition={{ duration: 0.4 }}>
+              {part.split("").map((d, i) => { const n = chunked(id).slice(0, pi).join("").length + i; return <span key={i} className="inline-block w-[0.66em]" style={{ opacity: n < shown ? 1 : 0.35 }}>{n < shown ? d : (spin * 7 + n * 3) % 10}</span>; })}
             </motion.span>
           ))}
         </div>
         <motion.p className="mt-8 max-w-[18rem] text-[16px] leading-snug text-white/75" initial={false} animate={{ opacity: done ? 1 : 0, y: done ? 0 : 10 }}>
-          Say it out loud, write it on a napkin. Anyone can reach you with it, and nobody learns your phone number.
+          The same number everywhere, for life. Anyone can reach you with it, and nobody learns your mobile or email.
         </motion.p>
       </div>
       <motion.button type="button" className="btn btn-sun w-full" disabled={!done} animate={{ opacity: done ? 1 : 0 }} onClick={() => { const t = s.pending; act.auth(null); if (t) act.enter(t); }}>{to ? `Take me to ${to}` : "Start"}</motion.button>
