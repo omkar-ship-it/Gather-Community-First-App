@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { cityOf } from "@/lib/ids";
 import { CalendarDays, Hash, MessageCircle, Plus, Users } from "lucide-react";
 import { ago, latest, left, overlap, person, useNow, useStore, when, type Tab } from "@/lib/store";
 import { Avatar, Glyph, IdTiles, Unread, firstOf, nameOf, spring } from "./ui";
@@ -14,7 +15,7 @@ function Top({ title }: { title: string }) {
         <button type="button" aria-label="Your card" className="press rounded-full" onClick={() => act.push({ t: "me" })}><Avatar id="me" size={42} /></button>
       </div>
       <button type="button" onClick={() => act.dial(true)} className="press mt-3 flex min-h-[52px] w-full items-center gap-3 rounded-[18px] bg-[var(--card)] px-4 text-left text-[16px] text-[var(--soft)]">
-        <Hash size={20} className="text-[var(--brand)]" /> Enter an ID
+        <Hash size={20} className="text-[var(--brand)]" /> Dial a number
       </button>
     </header>
   );
@@ -43,7 +44,7 @@ export function Home() {
           <div className="mt-6 rounded-[24px] bg-[var(--card)] p-6 text-center">
             <p className="text-[19px] font-semibold">Nobody here yet</p>
             <p className="mx-auto mt-1 max-w-[17rem] text-[15px] leading-snug text-[var(--soft)]">Got six digits from someone? That&apos;s your way in.</p>
-            <button type="button" className="btn btn-main mt-5 w-full" onClick={() => act.dial(true)}>Enter an ID</button>
+            <button type="button" className="btn btn-main mt-5 w-full" onClick={() => act.dial(true)}>Dial a number</button>
           </div>
         )}
         {s.communities.filter((c) => s.asked.includes(c.id)).map((c) => (
@@ -73,7 +74,7 @@ export function Home() {
 export function Messages() {
   const { s, act } = useStore();
   const now = useNow(20_000);
-  const dms = Object.entries(s.threads).filter(([k, v]) => k.startsWith("d:") && v.length).map(([k, v]) => ({ k, id: k.slice(2), last: v.at(-1)! })).sort((a, b) => b.last.at - a.last.at);
+  const dms = Object.entries(s.threads).filter(([k, v]) => k.startsWith("d:") && v.length && !s.requests.includes(k.slice(2))).map(([k, v]) => ({ k, id: k.slice(2), last: v.at(-1)! })).sort((a, b) => b.last.at - a.last.at);
   const quiet = s.saved.filter((id) => !(s.threads[`d:${id}`] ?? []).length);
   return (
     <div className="flex h-full flex-col">
@@ -84,6 +85,12 @@ export function Messages() {
             {s.saved.map((id) => <button key={id} type="button" onClick={() => act.push({ t: "person", id })} className="press flex w-[62px] flex-none flex-col items-center gap-1.5"><Avatar id={id} size={58} /><span className="w-full truncate text-center text-[13px]">{firstOf(id)}</span></button>)}
           </div>
         )}
+        {s.requests.map((id) => (
+          <button key={id} type="button" onClick={() => act.push({ t: "chat", thread: `d:${id}` })} className="press mb-2.5 flex w-full items-center gap-3.5 rounded-[20px] border-2 border-dashed border-[var(--line)] p-4 text-left">
+            <Avatar id={id} size={44} />
+            <span className="min-w-0 flex-1"><span className="block text-[16px] font-semibold">{firstOf(id)} would like to talk</span><span className="block truncate text-[14.5px] text-[var(--soft)]">{person(id)?.headline}, {cityOf(person(id)?.zone ?? "")?.name}</span></span>
+          </button>
+        ))}
         {quiet.map((id) => {
           const o = overlap(s, person(id)!);
           return (
@@ -93,7 +100,7 @@ export function Messages() {
             </button>
           );
         })}
-        {dms.length === 0 && quiet.length === 0 && <p className="mt-10 text-center text-[15px] leading-snug text-[var(--soft)]">No messages yet. Enter someone&apos;s<br />eight digits to say hello.</p>}
+        {dms.length === 0 && quiet.length === 0 && <p className="mt-10 text-center text-[15px] leading-snug text-[var(--soft)]">No messages yet. Enter someone&apos;s<br />number to say hello.</p>}
         {dms.map(({ k, id, last }) => {
           const c = s.communities.find((x) => x.joined && x.members.includes(id));
           return (

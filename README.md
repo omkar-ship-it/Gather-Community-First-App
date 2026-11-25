@@ -9,18 +9,23 @@ npm run dev
 
 Open it on a phone, or on a desktop where it sits in a handset with a list of IDs to try.
 
-## The ID system (`lib/ids.ts`)
+## The number plan (`lib/ids.ts`)
 
-One dial pad reaches everything. The first digit says what you're dialling.
+Numbers are unique within a city, like phone numbers within an area code. From another city, dial 0 and its three-digit code first. The first digit says what you're dialling.
 
-| Starts with | Is | Digits |
-| --- | --- | --- |
-| 2–5 | a person | 8 |
-| 7 | a group | 6 |
-| 8 | a community | 6 |
-| 9 | an event room, gone when the event ends | 6 |
+| Starts with | Is | Digits | Room for, with 1,000 city codes |
+| --- | --- | --- | --- |
+| 0 | another city | 0 + 3 | |
+| 1 | reserved | | |
+| 2–5 | a person, last digit is a check digit | 9 | 40 billion |
+| 6 | an online community, same in every city | 8 | 10 million |
+| 7 | a group | 8 | 10 billion |
+| 8 | a community | 6 | 100 million, 100,000 per city code |
+| 9 | a live room, reused after the event | 6 | 100 million open at once |
 
-Indian mobiles are 10 digits and start 6–9, so a person's ID is never mistaken for one. Any ID works as a link: `/?id=804219`.
+Written down, numbers carry a mark (`@482 910 440`, `#804 219`, `*992 104`) because any bare run of digits is a phone number somewhere. The marks never have to be typed. City codes here are invented and are not STD codes. A large metro can hold several codes.
+
+Any number is also a link: `/?id=0418804219`.
 
 ## Where things are
 

@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { CalendarPlus, Check, Hash, IndianRupee, PenLine } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
-import { pretty } from "@/lib/ids";
+import { cityOf, pretty } from "@/lib/ids";
 import { linkTo, useStore, when, type Sheet } from "@/lib/store";
 import { Avatar, Glyph, IdTiles, SheetShell, firstOf, nameOf, spring } from "./ui";
 
@@ -21,7 +21,7 @@ export default function Sheets() {
       {sh?.t === "pay" && <PaySheet id={sh.eventId} />}
       {sh?.t === "split" && <SplitSheet />}
       {sh?.t === "comments" && <CommentsSheet id={sh.postId} />}
-      {sh?.t === "key" && <KeySheet kind={sh.kind} id={sh.id} />}
+      {sh?.t === "key" && <KeySheet kind={sh.kind} id={sh.id} zone={sh.zone} />}
     </SheetShell>
   );
 }
@@ -30,7 +30,7 @@ function PlusSheet() {
   const { s, act } = useStore();
   const any = s.communities.some((c) => c.joined);
   const rows = [
-    { icon: Hash, label: "Enter an ID", sub: "A person, a community or a room", go: () => act.dial(true), ok: true },
+    { icon: Hash, label: "Enter an ID", sub: "A person, a community or a room, anywhere", go: () => act.dial(true), ok: true },
     { icon: PenLine, label: "Write a post", sub: "To one of your communities", go: () => act.sheet({ t: "post" }), ok: any },
     { icon: CalendarPlus, label: "Host an event", sub: "Comes with its own room and PIN", go: () => act.sheet({ t: "host" }), ok: any },
     { icon: IndianRupee, label: "Split a bill", sub: "With people you've kept", go: () => act.sheet({ t: "split" }), ok: s.saved.length > 0 },
@@ -111,7 +111,7 @@ function PaySheet({ id }: { id: string }) {
           <p className="text-[14px] text-white/75">Your way into the room</p>
           <span className="mt-2 block"><IdTiles digits={e.room} tone="dark" /></span>
         </motion.div>
-        <button type="button" className="btn btn-main mt-5 w-full" onClick={() => act.sheet({ t: "key", kind: "room", id: e.room })}>Bring a friend</button>
+        <button type="button" className="btn btn-main mt-5 w-full" onClick={() => act.sheet({ t: "key", kind: "room", id: e.room, zone: e.zone })}>Bring a friend</button>
         <button type="button" className="mt-1 min-h-[44px] w-full text-[15px] text-[var(--soft)]" onClick={() => act.sheet(null)}>Done</button>
       </div>
     );
@@ -153,22 +153,23 @@ function CommentsSheet({ id }: { id: string }) {
 }
 
 /** Pass the key: an invitation that opens the exact door you came through. */
-function KeySheet({ kind, id }: { kind: string; id: string }) {
+function KeySheet({ kind, id, zone }: { kind: string; id: string; zone: string }) {
   const { s, act } = useStore();
-  const c = s.communities.find((x) => x.id === id);
+  const c = s.communities.find((x) => x.num === id && x.zone === zone);
   const g = s.groups.find((x) => x.id === id);
-  const e = s.events.find((x) => x.room === id);
+  const e = s.events.find((x) => x.room === id && x.zone === zone);
   const name = c?.name ?? g?.name ?? e?.title.split(":")[0] ?? "";
   return (
     <div className="text-center">
       <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={spring} className="rounded-[28px] bg-[var(--bg)] p-6">
         <p className="text-[18px] font-semibold">{name}</p>
-        <span className="mx-auto mt-4 grid w-fit rounded-[20px] bg-white p-4"><QRCodeSVG value={linkTo(id)} size={130} fgColor="#1e1020" /></span>
+        <span className="mx-auto mt-4 grid w-fit rounded-[20px] bg-white p-4"><QRCodeSVG value={linkTo(id, zone)} size={130} fgColor="#1e1020" /></span>
         <span className="mt-5 block"><IdTiles digits={id} size="lg" /></span>
+        <p className="mt-3 text-[14px] text-[var(--soft)]">{zone ? <>In {cityOf(zone)?.name}. From anywhere else, <span className="digits">0{zone}</span> first</> : "The same number in every city"}</p>
       </motion.div>
       <p className="mx-auto mt-4 max-w-[18rem] text-[15px] leading-snug text-[var(--soft)]">{kind === "room" ? "Works until the event ends, then it's gone." : "Whoever gets this walks straight in, not to a sign-up page."}</p>
       <button type="button" className="btn btn-main mt-4 w-full" onClick={async () => {
-        const text = `${s.me?.name.split(" ")[0]} passed you the key to ${name} on Gather: ${pretty(id)} ${linkTo(id)}`;
+        const text = `${s.me?.name.split(" ")[0]} passed you the key to ${name} on Gather: ${pretty(id)} ${linkTo(id, zone)}`;
         try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); act.say("Invitation copied"); } } catch { /* they changed their mind */ }
       }}>Send the key</button>
     </div>

@@ -5,7 +5,9 @@ import { Bookmark, BookmarkCheck, Heart, MapPin, MessageCircle, Send, Share2 } f
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useRef, useState } from "react";
 import type { Event, Post } from "@/lib/data";
-import { ago, left, linkTo, overlap, person, useNow, useStore, when } from "@/lib/store";
+import { HOME, cityOf, fullOf, pretty } from "@/lib/ids";
+import { INTENTS } from "@/lib/data";
+import { ago, byFit, count, left, linkTo, overlap, person, stranger, useNow, useStore, when } from "@/lib/store";
 import { Avatar, Bar, Glyph, IdTiles, Tag, Unread, firstOf, nameOf, spring } from "./ui";
 
 // ------------------------------------------------------------ community
@@ -19,18 +21,21 @@ export function CommunityScreen({ id, initial = "feed" }: { id: string; initial?
   const now = useNow(20_000);
   const c = s.communities.find((x) => x.id === id)!;
   const groups = s.groups.filter((g) => g.communityId === id);
-  const people = c.members.map((m) => person(m)!).filter((p) => `${p.name} ${p.headline} ${p.intents.join(" ")} ${p.skills.join(" ")}`.toLowerCase().includes(q.toLowerCase()));
+  const [want, setWant] = useState<string | null>(null);
+  const big = c.size > 1000;
+  const wants = INTENTS.filter((i) => c.members.some((m) => person(m)!.intents.includes(i)));
+  const people = byFit(s, c.members).map((m) => person(m)!).filter((p) => !want || p.intents.includes(want)).filter((p) => `${p.name} ${p.headline} ${p.intents.join(" ")} ${p.skills.join(" ")}`.toLowerCase().includes(q.toLowerCase()));
   const events = s.events.filter((e) => e.communityId === id && !e.dissolved);
   return (
     <div className="flex h-full flex-col bg-[var(--bg)]">
       <div className="flex-none text-white" style={{ background: `hsl(${c.hue} 46% 30%)` }}>
-        <Bar dark title="" right={<button type="button" className="press mr-2 flex min-h-[44px] items-center gap-2 rounded-full bg-white/15 px-4 text-[14.5px] font-medium" onClick={() => act.sheet({ t: "key", kind: "community", id })}><Share2 size={16} /> Pass the key</button>} />
+        <Bar dark title="" right={<button type="button" className="press mr-2 flex min-h-[44px] items-center gap-2 rounded-full bg-white/15 px-4 text-[14.5px] font-medium" onClick={() => act.sheet({ t: "key", kind: "community", id: c.num, zone: c.zone })}><Share2 size={16} /> Pass the key</button>} />
         <div className="px-5 pb-4">
           <div className="flex items-center gap-4">
             <span className="rounded-[22px] ring-[3px] ring-white/25"><Glyph c={c} size={64} /></span>
-            <div className="min-w-0"><h1 className="text-[24px] font-semibold leading-tight tracking-[-0.02em]">{c.name}</h1><p className="mt-1 text-[14.5px] text-white/75">{c.size} members</p></div>
+            <div className="min-w-0"><h1 className="text-[24px] font-semibold leading-tight tracking-[-0.02em]">{c.name}</h1><p className="mt-1 text-[14.5px] text-white/75">{count(c.size)} members{c.online ? ", every city" : ""}</p></div>
           </div>
-          <div className="mt-4 flex items-center justify-between gap-3"><p className="text-[15px] leading-snug text-white/85">{c.blurb}</p><IdTiles digits={c.id} size="sm" tone="dark" /></div>
+          <div className="mt-4 flex items-center justify-between gap-3"><p className="text-[15px] leading-snug text-white/85">{c.blurb}</p><IdTiles digits={c.num} size="sm" tone="dark" /></div>
         </div>
         <div className="flex px-3" role="tablist">
           {TABS.map((t) => (
@@ -62,7 +67,9 @@ export function CommunityScreen({ id, initial = "feed" }: { id: string; initial?
         })}
         {tab === "members" && (
           <>
-            <input className="field mb-3" placeholder="Search by name, skill or what they want" aria-label="Search people" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input className="field mb-3" placeholder={big ? `Search ${count(c.size)} people` : "Search by name, skill or what they want"} aria-label="Search people" value={q} onChange={(e) => setQ(e.target.value)} />
+            <div className="scroll -mx-4 mb-3 flex gap-2 overflow-x-auto px-4">{wants.map((i) => <button key={i} type="button" aria-pressed={want === i} onClick={() => setWant(want === i ? null : i)} className="press min-h-[44px] flex-none rounded-full px-4 text-[14.5px] font-medium" style={{ background: want === i ? "var(--sun)" : "var(--card)" }}>{i}</button>)}</div>
+            {big && !q && !want && <h2 className="mb-2.5 px-1 text-[16px] font-semibold">Start with these</h2>}
             {people.map((p) => {
               const why = overlap(s, p);
               return (
@@ -195,7 +202,20 @@ export function ChatScreen({ thread, draft }: { thread: string; draft?: string }
           <Bar title={p.name} sub={p.headline} onTitle={() => act.push({ t: "person", id })} right={<button type="button" aria-label={`${p.name}'s profile`} className="mr-3" onClick={() => act.push({ t: "person", id })}><Avatar id={id} size={40} /></button>} />
           {shared.length > 0 && <p className="truncate px-5 pb-2.5 text-[13.5px] text-[var(--brand)]">You both: {shared.join(", ")}</p>}
         </div>
-        <Thread thread={thread} draft={draft} />
+        {s.requests.includes(id) ? (
+          <>
+            <div className="scroll flex-1 px-4 pt-5">{(s.threads[thread] ?? []).map((m) => <p key={m.id} className="max-w-[82%] rounded-[20px] rounded-bl-md bg-[var(--card)] px-4 py-2.5 text-[16px] leading-[1.4]">{m.text}</p>)}</div>
+            <div className="flex-none border-t border-[var(--line)] bg-[var(--card)] px-5 pb-[max(env(safe-area-inset-bottom),18px)] pt-4">
+              <p className="text-[15px] leading-snug text-[var(--soft)]">{o.communities[0] ? `All you share is ${o.communities[0].name}, with ${count(o.communities[0].size)} others.` : `You don't share a community with ${p.name.split(" ")[0]}.`} {p.name.split(" ")[0]} won&apos;t know you&apos;ve read this.</p>
+              <div className="mt-3 grid grid-cols-2 gap-2.5"><button type="button" className="btn btn-quiet" onClick={() => act.answer(id, false)}>Decline</button><button type="button" className="btn btn-main" onClick={() => act.answer(id, true)}>Accept</button></div>
+            </div>
+          </>
+        ) : (
+          <>
+            {stranger(s, id) && !(s.threads[thread] ?? []).length && <p className="mx-4 mt-4 flex-none rounded-2xl bg-[var(--sunk)] px-4 py-3 text-[14.5px] leading-snug text-[var(--soft)]">{p.name.split(" ")[0]} doesn&apos;t know you yet. Your first message arrives as a request.</p>}
+            <Thread thread={thread} draft={draft} />
+          </>
+        )}
       </div>
     );
   }
@@ -203,7 +223,7 @@ export function ChatScreen({ thread, draft }: { thread: string; draft?: string }
   const c = s.communities.find((x) => x.id === g.communityId)!;
   return (
     <div className="flex h-full flex-col bg-[var(--bg)]">
-      <div className="flex-none border-b border-[var(--line)] bg-[var(--card)]"><Bar title={g.name} sub={`${c.name}, ${g.size} people`} right={<button type="button" aria-label="Pass the key" className="press mr-2 grid h-11 w-11 place-items-center rounded-full" onClick={() => act.sheet({ t: "key", kind: "group", id })}><Share2 size={20} /></button>} /></div>
+      <div className="flex-none border-b border-[var(--line)] bg-[var(--card)]"><Bar title={g.name} sub={`${c.name}, ${count(g.size)} people`} right={<button type="button" aria-label="Pass the key" className="press mr-2 grid h-11 w-11 place-items-center rounded-full" onClick={() => act.sheet({ t: "key", kind: "group", id, zone: c.zone || HOME })}><Share2 size={20} /></button>} /></div>
       <Thread thread={thread} />
     </div>
   );
@@ -226,6 +246,7 @@ export function PersonScreen({ id }: { id: string }) {
           <p className="text-[16px] text-[var(--soft)]">{p.headline}</p>
           <p className="mt-1 flex items-center gap-1 text-[14.5px] text-[var(--soft)]"><MapPin size={15} /> {p.city}</p>
           <span className="mt-4"><IdTiles digits={id} /></span>
+          {p.zone !== s.me?.zone && <span className="mt-2 text-[14px] text-[var(--soft)]">{cityOf(p.zone)?.name}: dial <span className="digits">0{p.zone}</span> first</span>}
         </div>
         {o.line && (
           <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, ...spring }} className="mt-6 rounded-[24px] bg-[var(--sun)] p-5">
@@ -263,12 +284,12 @@ export function MeScreen() {
           <span className="flex justify-center"><Avatar id="me" size={76} /></span>
           <p className="mt-3 text-[24px] font-semibold tracking-[-0.02em]">{me.name}</p>
           <p className="text-[15px] text-[var(--soft)]">{me.headline}</p>
-          <span className="mx-auto mt-5 grid w-fit place-items-center rounded-[24px] bg-[var(--bg)] p-5"><QRCodeSVG value={linkTo(me.id)} size={148} bgColor="transparent" fgColor="#1e1020" /></span>
+          <span className="mx-auto mt-5 grid w-fit place-items-center rounded-[24px] bg-[var(--bg)] p-5"><QRCodeSVG value={linkTo(me.id, me.zone)} size={148} bgColor="transparent" fgColor="#1e1020" /></span>
           <span className="mt-5 block"><IdTiles digits={me.id} size="md" /></span>
           <span className="mt-4 flex flex-wrap justify-center gap-1.5">{me.intents.map((i) => <Tag key={i}>{i}</Tag>)}</span>
         </motion.div>
-        <p className="mx-auto mt-5 max-w-[17rem] text-center text-[15px] leading-snug text-white/80">This reaches you. Your mobile and email stay private.</p>
-        <button type="button" className="btn btn-sun mt-5 w-full" onClick={async () => { try { await navigator.clipboard.writeText(`${me.id.slice(0, 4)}-${me.id.slice(4)}`); act.say("ID copied"); } catch { act.say(`${me.id.slice(0, 4)}-${me.id.slice(4)}`); } }}>Copy my ID</button>
+        <p className="mx-auto mt-5 max-w-[17rem] text-center text-[15px] leading-snug text-white/80">Anyone in {cityOf(me.zone)?.name} can dial this. From another city, <span className="digits">0{me.zone}</span> first. Your mobile and email stay private.</p>
+        <button type="button" className="btn btn-sun mt-5 w-full" onClick={async () => { const t = `${pretty(me.id)} (${fullOf(me.id, me.zone)} from anywhere)`; try { await navigator.clipboard.writeText(t); act.say("Number copied"); } catch { act.say(pretty(me.id)); } }}>Copy my number</button>
         <button type="button" className="mt-2 min-h-[44px] w-full text-[14.5px] text-white/70" onClick={act.restart}>Start the prototype over</button>
       </div>
     </div>
@@ -285,7 +306,7 @@ export function EventScreen({ id }: { id: string }) {
   return (
     <div className="flex h-full flex-col bg-[var(--bg)]">
       <div className="flex-none pb-6 text-white" style={{ background: `hsl(${c.hue} 46% 30%)` }}>
-        <Bar dark title="" right={<button type="button" className="press mr-2 flex min-h-[44px] items-center gap-2 rounded-full bg-white/15 px-4 text-[14.5px] font-medium" onClick={() => act.sheet({ t: "key", kind: "room", id: e.room })}><Share2 size={16} /> Pass the key</button>} />
+        <Bar dark title="" right={<button type="button" className="press mr-2 flex min-h-[44px] items-center gap-2 rounded-full bg-white/15 px-4 text-[14.5px] font-medium" onClick={() => act.sheet({ t: "key", kind: "room", id: e.room, zone: e.zone })}><Share2 size={16} /> Pass the key</button>} />
         <div className="px-5"><p className="text-[15px] text-white/80">{c.name}</p><h1 className="mt-1 text-[29px] font-semibold leading-[1.1] tracking-[-0.025em]">{e.title}</h1></div>
       </div>
       <div className="scroll flex-1 px-5 pb-32 pt-5">
@@ -293,7 +314,7 @@ export function EventScreen({ id }: { id: string }) {
         <p className="mt-0.5 text-[15.5px] text-[var(--soft)]">{e.place}</p>
         <p className="mt-4 text-[16px] leading-[1.5]">{e.blurb}</p>
         <section className="mt-5 rounded-[24px] bg-[var(--card)] p-5">
-          <div className="flex items-center justify-between"><h2 className="text-[16px] font-semibold">{e.going.length + (e.ticket ? 1 : 0)} going</h2><span className="text-[14px] text-[var(--soft)]">{Math.max(0, e.seats - e.going.length - (e.ticket ? 1 : 0))} seats left</span></div>
+          <div className="flex items-center justify-between"><h2 className="text-[16px] font-semibold">{count(e.inside + (e.ticket ? 1 : 0))} going</h2><span className="text-[14px] text-[var(--soft)]">{count(Math.max(0, e.seats - e.inside - (e.ticket ? 1 : 0)))} seats left</span></div>
           <div className="mt-3 flex flex-wrap gap-2.5">{e.ticket && <Avatar id="me" size={44} />}{e.going.map((m) => <button key={m} type="button" aria-label={nameOf(m)} className="press" onClick={() => act.push({ t: "person", id: m })}><Avatar id={m} size={44} /></button>)}</div>
         </section>
         <section className="mt-3 rounded-[24px] border-2 border-dashed border-[var(--line)] p-5">
@@ -318,6 +339,7 @@ export function RoomScreen({ id }: { id: string }) {
   const ms = e.endsAt - now;
   const over = e.dissolved || ms <= 0;
   useEffect(() => { if (ms <= 0 && !e.dissolved) act.dissolve(id); }, [ms, e.dissolved, act, id]);
+  const [order] = useState(() => byFit(s, e.going));
   const closing = ms < 10 * 60_000;
   const last = ms < 13_000;
   return (
@@ -325,9 +347,9 @@ export function RoomScreen({ id }: { id: string }) {
       <AnimatePresence>
         {over ? <Dissolved key="over" e={e} /> : (
           <motion.div key="room" className="flex min-h-0 flex-1 flex-col" exit={{ opacity: 0, filter: "blur(18px)", scale: 1.06 }} transition={{ duration: 1.1 }} animate={{ opacity: last ? Math.max(0.35, ms / 13_000) : 1 }}>
-            <Bar dark title={e.title.split(":")[0]} sub={`${e.going.length + 1} inside`} right={<span className="digits mr-4 rounded-full px-3.5 py-1.5 text-[17px] font-medium" style={{ background: closing ? "var(--live)" : "rgba(255,255,255,0.12)" }} role="timer" aria-label="Time left">{left(ms)}</span>} />
+            <Bar dark title={e.title.split(":")[0]} sub={`${count(e.inside + 1)} inside`} right={<span className="digits mr-4 rounded-full px-3.5 py-1.5 text-[17px] font-medium" style={{ background: closing ? "var(--live)" : "rgba(255,255,255,0.12)" }} role="timer" aria-label="Time left">{left(ms)}</span>} />
             <div className="scroll flex flex-none gap-3 overflow-x-auto px-5 pb-3 pt-1">
-              {e.going.map((m, i) => (
+              {order.map((m, i) => (
                 <motion.button key={m} type="button" onClick={() => act.push({ t: "person", id: m })} initial={{ scale: 0, y: 24 }} animate={{ scale: 1, y: 0 }} transition={{ ...spring, delay: 0.12 + i * 0.08 }} className="relative flex w-[74px] flex-none flex-col items-center">
                   <Avatar id={m} size={60} />
                   {s.saved.includes(m) && <span className="absolute right-1.5 top-0 grid h-5 w-5 place-items-center rounded-full bg-[var(--sun)] text-[var(--ink)]"><BookmarkCheck size={12} /></span>}
@@ -336,7 +358,7 @@ export function RoomScreen({ id }: { id: string }) {
                 </motion.button>
               ))}
             </div>
-            <p className="flex-none px-5 pb-1 text-[14px] text-white/65">{closing ? "Closing soon. Tap anyone you want to keep." : "Everyone here dialled the same six digits."} <button type="button" className="underline underline-offset-4" onClick={() => act.hurry(id)}>Skip to the end</button></p>
+            <p className="flex-none px-5 pb-1 text-[14px] text-white/65">{closing ? "Closing soon. Tap anyone you want to keep." : e.inside > 500 ? "The people here most worth meeting, for you." : "Everyone here dialled the same six digits."} <button type="button" className="underline underline-offset-4" onClick={() => act.hurry(id)}>Skip to the end</button></p>
             <Thread thread={`r:${id}`} dark />
           </motion.div>
         )}
@@ -347,8 +369,9 @@ export function RoomScreen({ id }: { id: string }) {
 
 function Dissolved({ e }: { e: Event }) {
   const { s, act } = useStore();
-  const kept = e.going.filter((m) => s.saved.includes(m));
-  const rest = e.going.filter((m) => !s.saved.includes(m));
+  const sorted = byFit(s, e.going);
+  const kept = sorted.filter((m) => s.saved.includes(m));
+  const rest = sorted.filter((m) => !s.saved.includes(m));
   const said = (s.threads[`r:${e.id}`] ?? []).length;
   const c = s.communities.find((x) => x.id === e.communityId)!;
   const [offer] = useState(!c.joined);
@@ -356,7 +379,7 @@ function Dissolved({ e }: { e: Event }) {
     <motion.div className="absolute inset-0 flex flex-col" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.9, delay: 0.7 }}>
       <div className="scroll flex-1 px-6 pb-6 pt-[max(env(safe-area-inset-top),56px)]">
       <h1 className="text-[36px] font-semibold leading-[1.05] tracking-[-0.03em]">The room<br />is gone.</h1>
-      <p className="mt-3 text-[16.5px] leading-snug text-white/75">{e.going.length + 1} people, {said} messages, one evening. What you keep is who you met.</p>
+      <p className="mt-3 text-[16.5px] leading-snug text-white/75">{count(e.inside + 1)} people, {said} messages, one evening. What you keep is who you met.</p>
       <h2 className="mt-8 text-[16px] font-semibold">{rest.length ? "Anyone you don't want to lose?" : "You kept everyone"}</h2>
       <ul className="mt-2">
         {[...rest, ...kept].map((m) => {

@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, X } from "lucide-react";
-import { chunkOf, kindOf, type Kind } from "@/lib/ids";
+import { chunked, specOf, type Kind } from "@/lib/ids";
 import type { Community } from "@/lib/data";
 import { person, useStore } from "@/lib/store";
 
@@ -40,18 +40,20 @@ export function Glyph({ c, size = 52 }: { c: Pick<Community, "hue" | "glyph">; s
 }
 
 /**
- * An ID drawn so its kind is obvious before you read it: people are two
+ * An ID drawn so its kind is obvious before you read it: people are
  * soft pills, communities and groups are solid tiles, a room is a torn
  * ticket that won't last.
  */
 export function IdTiles({ digits, size = "md", tone = "plain" }: { digits: string; size?: "sm" | "md" | "lg"; tone?: "plain" | "dark" }) {
-  const kind = kindOf(digits) ?? "community";
-  const n = chunkOf(kind);
-  const parts = [digits.slice(0, n), digits.slice(n)];
-  const fs = { sm: 13, md: 18, lg: 34 }[size];
+  const sp = specOf(digits);
+  const kind = sp?.kind ?? "community";
+  const parts = chunked(digits);
+  const fs = { sm: 13, md: 18, lg: parts.length > 2 || (parts[0]?.length ?? 0) > 3 ? 27 : 34 }[size];
+  const fg = tone === "dark" ? "#fff" : kind === "person" ? "var(--brand)" : kind === "room" ? "var(--live)" : "var(--ink)";
   const bg = tone === "dark" ? "rgba(255,255,255,0.14)" : kind === "person" ? "var(--brand-soft)" : "var(--sunk)";
   return (
     <span className="digits inline-flex items-center font-medium" style={{ fontSize: fs, gap: fs * 0.3 }} aria-label={digits.split("").join(" ")}>
+      <span aria-hidden="true" style={{ color: fg }}>{sp?.mark}</span>
       {parts.map((x, i) => (
         <span
           key={i}
@@ -61,7 +63,7 @@ export function IdTiles({ digits, size = "md", tone = "plain" }: { digits: strin
             border: kind === "room" ? `1.5px dashed ${tone === "dark" ? "rgba(255,255,255,0.6)" : "var(--live)"}` : "1.5px solid transparent",
             borderRadius: kind === "person" ? 999 : fs * 0.32,
             letterSpacing: "0.06em",
-            color: tone === "dark" ? "#fff" : kind === "person" ? "var(--brand)" : kind === "room" ? "var(--live)" : "var(--ink)",
+            color: fg,
           }}
         >
           {x}
