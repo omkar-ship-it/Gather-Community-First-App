@@ -8,6 +8,7 @@ import Onboarding from "./Onboarding";
 import { Meet, Moments, NudgeBanner, Sending } from "./Peaks";
 import { Arrival, ChannelScreen, CommunityScreen, GroupScreen } from "./Community";
 import MoveIn from "./MoveIn";
+import { DeskScreen, DoorScreen, Milestone } from "./Host";
 import { ChatScreen, EventScreen, MeScreen, PersonScreen, RoomScreen } from "./Screens";
 import StartCommunity from "./Start";
 import Sheets from "./Sheets";
@@ -37,6 +38,8 @@ function view(sc: Screen) {
     case "room": return <RoomScreen id={sc.id} />;
     case "movein": return <MoveIn id={sc.id} />;
     case "me": return <MeScreen />;
+    case "desk": return <DeskScreen id={sc.id} />;
+    case "door": return <DoorScreen id={sc.id} />;
   }
 }
 
@@ -90,6 +93,7 @@ function Phone() {
       <Sheets />
       <Meet />
       <Sending />
+      <Milestone />
       <NudgeBanner />
       <AnimatePresence>
         {s.toast && <motion.p role="status" className="pointer-events-none absolute inset-x-0 bottom-28 z-[60] mx-auto w-fit max-w-[84%] rounded-full bg-[var(--ink)] px-5 py-3 text-center text-[15px] font-medium text-white" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}>{s.toast}</motion.p>}

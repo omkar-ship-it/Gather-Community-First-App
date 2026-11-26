@@ -40,6 +40,21 @@ A community has a kind (run club, professional, alumni, café, work, gym, restau
 
 `act.go` is the way to jump anywhere; `State.spot` remembers the tab each place was left on. Moments that deserve more than a toast live in `components/Peaks.tsx`.
 
+## Hosting (`lib/host.ts`, `components/Host.tsx`)
+
+A host's week is the same five jobs in a run club, a gym, a cafe or an alumni network. The **desk** puts them on one screen, each done in one tap, and says "Desk clear" when nothing needs the host.
+
+- **At the door:** each request shows the person's answer to the host's one question and who they already know inside. *Let in* or *Not now*. Nobody is ever told no.
+- **New this week:** everyone new is welcomed by name in a single post.
+- **Next up:** shows how full the next event is. *Save them a spot* sends a personal note to regulars who haven't said yes, and the seats fill as they reply.
+- **Gone quiet:** a *Miss you* note goes to anyone who stopped coming. Their reply comes back as a nudge.
+- **Hand over a key:** suggests a regular who could lead a group, so the community has more than one host.
+- **Door mode:** on event night the host ticks people in. First-timers are highlighted so the host greets them by name. *Close the door* posts a **roll call** with every face that came and tells the people who missed it that they were missed.
+- **Milestones:** reaching 60 or 100 members stops the app for a moment, with an offer to tell everyone.
+- **Standing** comes from showing up, not posting: New, Familiar face, Regular, Pillar. It appears on People.
+
+In the demo you co-host Sunday Runners (run club) and own Corner Table Club (cafe). Both desks are also on Home.
+
 ## WhatsApp Business
 
 A host brings a WhatsApp audience in without connecting anything (`components/MoveIn.tsx`): WhatsApp opens with the invite written, they pick their broadcast list and press send. Customers ask the business questions back on WhatsApp. Arrivals are simulated. Share links (`/c/<number>`, `/e/<event>`) carry their own preview image (`lib/card.tsx`).

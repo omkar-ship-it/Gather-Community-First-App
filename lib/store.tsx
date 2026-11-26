@@ -4,6 +4,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { COMMUNITIES, FITS, GROUPS, PEOPLE, makeEvents, makePosts, makeThreads, uid, type Biz, type CKind, type Community, type Event, type Group, type Me, type Msg, type Person, type Plan, type Post } from "./data";
 import type { Offer } from "./numbers";
 import { checks, pretty, specOf, type Kind } from "./ids";
+import { DESKS, milestone, type DeskSeed } from "./host";
+
+/** A host desk as it is right now: the seed, worked through. */
+export type Desk = DeskSeed & { invited: string[]; keyed: boolean };
 
 /** The tab someone left a community or a group on. */
 export type Spot = { at: string };
@@ -28,7 +32,9 @@ export type Screen =
   | { t: "event"; id: string }
   | { t: "room"; id: string }
   | { t: "me" }
-  | { t: "movein"; id: string };
+  | { t: "movein"; id: string }
+  | { t: "desk"; id: string }
+  | { t: "door"; id: string };
 export type Sheet =
   | { t: "plus" }
   | { t: "post"; communityId?: string; groupId?: string; announce?: boolean; draft?: string }
@@ -102,6 +108,14 @@ type State = {
   saved: string[];
   /** Strangers who wrote first, waiting for a yes. */
   requests: string[];
+  /** Host desks, by community. */
+  desk: Record<string, Desk>;
+  /** Who's been ticked in at the door, by event. */
+  here: Record<string, string[]>;
+  /** Events whose roll call has gone out. */
+  called: string[];
+  /** A round number just reached: everything stops for it. */
+  milestone: { id: string; n: number } | null;
 };
 
 const SAMPLE_ME: Me = { id: "48291044076", zone: "Bengaluru", mobile: "9876543210", email: "omkar@example.com", emailOk: true, name: "Omkar", headline: "Building something new", intents: ["Raising seed", "Building with AI", "New in town"], hue: 300 };
@@ -113,6 +127,10 @@ function fresh(): State {
   const ev = path?.[1] === "e" ? path[2] : new URLSearchParams(window.location.search).get("e");
   const arrive: Target | null = ev && makeEvents(now).some((e) => e.id === ev) ? { kind: "room", id: ev } : null;
   return {
+    desk: Object.fromEntries(Object.entries(DESKS).map(([k, v]) => [k, { ...structuredClone(v), invited: [], keyed: false }])),
+    here: {},
+    called: [],
+    milestone: null,
     me: null, pending: null, auth: "welcome", dial: link.length > 0 || Boolean(arrive), dialWith: link, arrive, doors: {}, contact: { mobile: "", email: "" }, held: null, lapsed: null, arrival: null, asked: [], tab: "communities", stack: [], sheet: null, toast: null, spot: {}, nudge: null, sending: null, mutual: [], meet: null, thanks: 0, movedIn: {}, paid: {}, askedGroups: [], moments: false, caughtUp: false,
     communities: COMMUNITIES, groups: GROUPS, posts: makePosts(now), events: makeEvents(now), threads: makeThreads(now),
     unread: { "f:742117308": 2, "f:763028052": 1, "d:31904472311": 1, "a:680421907": 1, "f:731806124": 1, "f:779215613": 1, "f:792210033": 1, "f:790082157": 1, "a:683017426": 1, "a:618402755": 1 }, typing: {}, saved: ["36025841840"], requests: ["33841506796"],
@@ -205,7 +223,7 @@ function useStoreValue() {
         return { posts: [post, ...x.posts], unread: { ...x.unread, [`f:${id}`]: here(x, id) ? 0 : (x.unread[`f:${id}`] ?? 0) + 1 }, nudge: { key: uid(), by: who, title: `${person(who)?.name.split(" ")[0]} welcomed you to ${gr.name}`, text, go: { t: "post", id: post.id } as Go } };
       }));
     };
-    return {
+    const api = {
       say, push, enter, addMsg,
       spot: (id: string, at: string) => patch((x) => ({ spot: { ...x.spot, [id]: { at } } })),
       seen: (id: string) => patch((x) => (x.unread[`a:${id}`] ? { unread: { ...x.unread, [`a:${id}`]: 0 } } : {})),
@@ -265,7 +283,7 @@ function useStoreValue() {
         }));
       },
 /** Publish, then let it be felt: hearts arrive, and the person it matters to answers. */
-      post: (communityId: string, text: string, to: { groupId?: string; announce?: boolean } = {}) => {
+      post: (communityId: string, text: string, to: { groupId?: string; announce?: boolean; tag?: string; crew?: string[]; stay?: boolean } = {}) => {
         const id = uid();
         const out = 2100;
         patch((x) => {
@@ -273,7 +291,7 @@ function useStoreValue() {
           const g = x.groups.find((v) => v.id === to.groupId);
           return { sheet: null, sending: { hue: c.hue, label: to.announce ? `Everyone in ${c.name}` : (g?.name ?? c.name), reach: g?.size ?? c.size, faces: byFit(x, g?.members ?? c.members).slice(0, 7) } };
         });
-        later(out - 500, () => patch((x) => ({ ...stand(x, communityId, to.groupId, "feed"), posts: [{ id, communityId, ...to, by: "me", at: Date.now(), text, likes: 0, liked: false, comments: [], ...(to.announce ? { seen: 1 } : {}) }, ...x.posts] })));
+        later(out - 500, () => patch((x) => ({ ...(to.stay ? {} : stand(x, communityId, to.groupId, "feed")), posts: [{ id, communityId, groupId: to.groupId, announce: to.announce, tag: to.tag, crew: to.crew, by: "me", at: Date.now(), text, likes: 0, liked: false, comments: [], ...(to.announce ? { seen: 1 } : {}) }, ...x.posts] })));
         later(out, () => patch(() => ({ sending: null })));
         const bump = (f: (p: Post, x: State) => Post) => patch((x) => ({ posts: x.posts.map((p) => (p.id === id ? f(p, x) : p)) }));
         [1600, 2300, 3400, 4100, 5600].forEach((ms) => later(out + ms, () => bump((p) => ({ ...p, likes: p.likes + 1 }))));
@@ -281,7 +299,7 @@ function useStoreValue() {
         later(out + 4700, () => patch((x) => {
           const pool = to.groupId ? x.groups.find((v) => v.id === to.groupId)?.members : x.communities.find((v) => v.id === communityId)?.members;
           const who = byFit(x, pool ?? []).find((v) => v !== "me");
-          if (!who || to.announce) return {};
+          if (!who || to.announce || to.tag) return {};
           return { posts: x.posts.map((p) => (p.id === id ? { ...p, comments: [...p.comments, { by: who, text: "I can help with this. Message me?" }] } : p)), nudge: { key: uid(), by: who, title: `${person(who)?.name.split(" ")[0]} answered you`, text: "I can help with this. Message me?", go: { t: "post", id } as Go } };
         }));
       },
@@ -329,9 +347,118 @@ function useStoreValue() {
           const hue = KIND_HUE[v.kind];
           const c: Community = { kind: v.kind, id, name: v.name, blurb: `${v.kind === "Interest" ? "Community" : v.kind}, just opened`, about: "", hue, glyph: ["circle", "wave", "grid", "dice"][Math.floor(Math.random() * 4)], members: [], size: 1, joined: true, open: !v.ask, hosts: ["me"], plan: v.plan, biz: v.biz ? { kind: v.kind, opens: 9, closes: 21, wa: "", catalogue: "" } : undefined };
           const groups: Group[] = v.groups.map((name, i) => ({ id: `7${id.slice(1, 7)}${i}${Math.floor(Math.random() * 9)}`.slice(0, 9), communityId: id, name, topic: "", size: 1, joined: true, members: [], fits: [], by: "me" }));
-          return { communities: [c, ...x.communities], groups: [...x.groups, ...groups] };
+          return { communities: [c, ...x.communities], groups: [...x.groups, ...groups], desk: { ...x.desk, [id]: { question: "What brings you here?", unit: "meet-ups", door: [], fresh: [], drift: [], came: { me: 0 }, week: { joined: 0, came: 0, earned: 0 }, invited: [], keyed: false } } };
         });
         return id;
+      },
+
+      // ------------------------------------------------------------ the host's desk
+      /** Let someone in. If that makes a round number, everything stops for it. */
+      letIn: (cid: string, pid: string) => {
+        patch((x) => {
+          const c = x.communities.find((v) => v.id === cid)!;
+          const d = x.desk[cid];
+          const hit = milestone(c.size, c.size + 1);
+          return {
+            communities: x.communities.map((v) => (v.id === cid ? { ...v, members: [...v.members, pid], size: v.size + 1 } : v)),
+            desk: { ...x.desk, [cid]: { ...d, door: d.door.filter((k) => k.id !== pid), fresh: [...d.fresh, pid], came: { ...d.came, [pid]: 0 } } },
+            ...(hit ? { milestone: { id: cid, n: hit } } : {}),
+          };
+        });
+        say(`${person(pid)?.name.split(" ")[0]} is in`);
+      },
+      /** Not now: they hear "not right now", kindly, and never a no. */
+      notNow: (cid: string, pid: string) => {
+        patch((x) => ({ desk: { ...x.desk, [cid]: { ...x.desk[cid], door: x.desk[cid].door.filter((k) => k.id !== pid) } } }));
+        say(`${person(pid)?.name.split(" ")[0]} hears “not right now”, kindly`);
+      },
+      quietMilestone: () => patch(() => ({ milestone: null })),
+      /** Everyone new this week, welcomed by name in one post. */
+      welcome: (cid: string, text: string) => {
+        patch((x) => ({ desk: { ...x.desk, [cid]: { ...x.desk[cid], fresh: [] } } }));
+        later(30, () => { api.post(cid, text, { tag: "Welcome", stay: true }); });
+      },
+      /** Here, at the door. Tap again to undo. */
+      arrived: (eid: string, pid: string) => patch((x) => { const h = x.here[eid] ?? []; return { here: { ...x.here, [eid]: h.includes(pid) ? h.filter((v) => v !== pid) : [...h, pid] } }; }),
+      /** Save someone a spot: a personal note from the host, and they say yes a moment later. */
+      fill: (eid: string, ids: string[]) => {
+        patch((x) => {
+          const e = x.events.find((v) => v.id === eid)!;
+          const d = x.desk[e.communityId];
+          return {
+            desk: d ? { ...x.desk, [e.communityId]: { ...d, invited: [...d.invited, ...ids] } } : x.desk,
+            threads: { ...x.threads, ...Object.fromEntries(ids.map((pid) => [`d:${pid}`, [...(x.threads[`d:${pid}`] ?? []), { id: uid(), by: "me", text: `Saved you a spot for ${e.title}. Coming?`, at: Date.now() }]])) },
+          };
+        });
+        ids.forEach((pid, i) => later(1800 + i * 1500, () => patch((x) => {
+          const e = x.events.find((v) => v.id === eid)!;
+          if (e.going.includes(pid)) return {};
+          return {
+            events: x.events.map((v) => (v.id === eid ? { ...v, going: [...v.going, pid], inside: v.inside + 1 } : v)),
+            threads: { ...x.threads, [`d:${pid}`]: [...(x.threads[`d:${pid}`] ?? []), { id: uid(), by: pid, text: ["Yes! Thank you for thinking of me.", "In. See you there.", "Oh go on then. I'm in."][i % 3], at: Date.now() }] },
+            unread: { ...x.unread, [`d:${pid}`]: (x.unread[`d:${pid}`] ?? 0) + 1 },
+          };
+        })));
+      },
+      /** A note to someone who's gone quiet. The reply is the reward. */
+      missYou: (cid: string, pid: string) => {
+        patch((x) => {
+          const c = x.communities.find((v) => v.id === cid)!;
+          const d = x.desk[cid];
+          const w = d.drift.find((v) => v.id === pid)?.weeks ?? 2;
+          return {
+            desk: { ...x.desk, [cid]: { ...d, drift: d.drift.filter((v) => v.id !== pid) } },
+            threads: { ...x.threads, [`d:${pid}`]: [...(x.threads[`d:${pid}`] ?? []), { id: uid(), by: "me", text: `${c.name} hasn't been the same for ${w} weeks. No pressure, just missed you. Saving you a spot?`, at: Date.now() }] },
+          };
+        });
+        say("Sent, from you");
+        later(4200, () => patch((x) => {
+          const e = x.events.filter((v) => v.communityId === cid && !v.dissolved && v.startsAt > Date.now()).sort((a, b) => a.startsAt - b.startsAt)[0];
+          const text = "You noticed. That's honestly made my week. I'll be there.";
+          return {
+            events: e && !e.going.includes(pid) ? x.events.map((v) => (v.id === e.id ? { ...v, going: [...v.going, pid], inside: v.inside + 1 } : v)) : x.events,
+            threads: { ...x.threads, [`d:${pid}`]: [...(x.threads[`d:${pid}`] ?? []), { id: uid(), by: pid, text, at: Date.now() }] },
+            unread: { ...x.unread, [`d:${pid}`]: (x.unread[`d:${pid}`] ?? 0) + 1 },
+            nudge: { key: uid(), by: pid, title: `${person(pid)?.name.split(" ")[0]} is coming back`, text, go: { t: "dm", id: pid } as Go },
+          };
+        }));
+      },
+      /** Hand someone a key: they lead a group, and everyone hears about it. */
+      giveKey: (cid: string) => {
+        const k = { id: "", group: "" };
+        patch((x) => {
+          const d = x.desk[cid];
+          if (!d.key) return {};
+          k.id = d.key.id;
+          k.group = x.groups.find((g) => g.id === d.key!.groupId)?.name ?? "a group";
+          return { desk: { ...x.desk, [cid]: { ...d, keyed: true } }, communities: x.communities.map((v) => (v.id === cid ? { ...v, hosts: [...new Set([...v.hosts, k.id])] } : v)), groups: x.groups.map((g) => (g.id === d.key!.groupId ? { ...g, by: k.id } : g)) };
+        });
+        later(30, () => {
+          if (!k.id) return;
+          const first = person(k.id)?.name.split(" ")[0];
+          api.post(cid, `${first} now leads ${k.group}. If you're new, find ${first}: nobody gets left at the back.`, { announce: true, stay: true });
+          later(6500, () => patch(() => ({ nudge: { key: uid(), by: k.id, title: `${first} got the key`, text: "Me? Okay. I'm bringing a flag so the back can find me.", go: { t: "dm", id: k.id } as Go } })));
+        });
+      },
+      /** The door closes: one post with every face that came, and a note to anyone who didn't make it. */
+      rollCall: (eid: string, missed: boolean) => {
+        const out = { cid: "", text: "", crew: [] as string[] };
+        patch((x) => {
+          const e = x.events.find((v) => v.id === eid)!;
+          const crew = x.here[eid] ?? [];
+          const no = e.going.filter((v) => v !== "me" && !crew.includes(v));
+          const d = x.desk[e.communityId];
+          out.cid = e.communityId;
+          out.crew = crew;
+          const fresh = crew.filter((v) => (d?.came[v] ?? 0) === 0).map((v) => person(v)?.name.split(" ")[0]);
+          out.text = `${e.title}: ${crew.length + 1} of us came out.${fresh.length ? ` First time for ${fresh.join(" and ")}, so be nice.` : ""} Thank you for turning up.`;
+          return {
+            called: [...x.called, eid],
+            desk: d ? { ...x.desk, [e.communityId]: { ...d, came: { ...d.came, me: (d.came.me ?? 0) + 1, ...Object.fromEntries(crew.map((v) => [v, (d.came[v] ?? 0) + 1])) }, week: { ...d.week, came: d.week.came + crew.length + 1 } } } : x.desk,
+            threads: missed ? { ...x.threads, ...Object.fromEntries(no.map((pid) => [`d:${pid}`, [...(x.threads[`d:${pid}`] ?? []), { id: uid(), by: "me", text: `Missed you at ${e.title}. Next one's yours.`, at: Date.now() }]])) } : x.threads,
+          };
+        });
+        later(30, () => { api.post(out.cid, out.text, { tag: "Roll call", crew: out.crew }); });
       },
       opened: (id: string) => patch((x) => stand({ ...x, stack: [] }, id, undefined, "groups")),
       leaveGroup: (id: string) => patch((x) => ({ groups: x.groups.map((v) => (v.id === id ? { ...v, joined: false, size: v.size - 1 } : v)), sheet: null, unread: { ...x.unread, [`f:${id}`]: 0 }, stack: x.stack.filter((v) => !(v.t === "group" && v.id === id)) })),
@@ -384,6 +511,7 @@ function useStoreValue() {
       hurry: (id: string) => patch((x) => ({ events: x.events.map((e) => (e.id === id ? { ...e, endsAt: Date.now() + 12_000 } : e)) })),
       dissolve: (id: string) => patch((x) => ({ events: x.events.map((e) => (e.id === id ? { ...e, dissolved: true } : e)) })),
     };
+    return api;
   }, [later, patch]);
 
   // Life going on elsewhere: a post lands now and then, and home re-sorts itself.

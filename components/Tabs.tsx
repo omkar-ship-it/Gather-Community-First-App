@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { CalendarDays, ChevronRight, Compass, Hash, MessageCircle, Plus, Users } from "lucide-react";
 import { ago, headline, latest, left, maskEmail, momentsFor, money, overlap, person, suggested, useNow, useStore, what, when, type Tab } from "@/lib/store";
 import { Avatar, Faces, Glyph, GroupMark, IdTiles, Unread, firstOf, nameOf, rectOf, spring } from "./ui";
+import { DeskCard } from "./Host";
 
 function Top({ title }: { title: string }) {
   const { act } = useStore();
@@ -55,6 +56,7 @@ export function Home() {
             </span>
           </button>
         ))}
+        {s.communities.filter((c) => c.joined && c.hosts.includes("me") && s.desk[c.id]).map((c) => <DeskCard key={`desk-${c.id}`} c={c} compact />)}
         {s.communities.filter((c) => s.asked.includes(c.id)).map((c) => (
           <div key={c.id} className="flex items-center gap-4 py-3 opacity-70"><Glyph c={c} size={58} /><span><span className="block text-[17px] font-semibold">{c.name}</span><span className="text-[14.5px] text-[var(--soft)]">Waiting for a host to say yes</span></span></div>
         ))}

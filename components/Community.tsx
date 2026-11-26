@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { INTENTS, type Community, type Event, type Group, type Post } from "@/lib/data";
 import { ago, announcements, byFit, count, day, feedFor, fitsMe, isHost, latest, openGroups, openNow, overlap, person, useNow, useStore, what, when } from "@/lib/store";
 import { Avatar, Bar, Faces, Glyph, GroupMark, Tag, Unread, firstOf, nameOf, rectOf, spring } from "./ui";
+import { DeskCard } from "./Host";
+import { standing } from "@/lib/host";
 
 // ------------------------------------------------------------ the shape every place shares
 /** Tabs on top, pages underneath; swipe or tap. Communities and groups both use it, so nothing has to be learnt twice. */
@@ -76,7 +78,7 @@ export function CommunityScreen({ id }: { id: string }) {
         </button>
       </div>
       <Place id={id} dark={tone(c)} tabs={[["groups", "Groups"], ["feed", "Feed"], ["people", "People"], ["events", "Events"]] as const}>
-        {(t) => t === "groups" ? <GroupsTab c={c} now={now} /> : t === "feed" ? <FeedTab c={c} now={now} /> : t === "people" ? <div className="scroll h-full px-4 pb-10 pt-4"><People ids={c.members} size={c.size} hosts={c.hosts} me hint={c.kind === "Alumni" ? "Name, company, city or class" : undefined} /></div> : <EventsTab c={c} />}
+        {(t) => t === "groups" ? <GroupsTab c={c} now={now} /> : t === "feed" ? <FeedTab c={c} now={now} /> : t === "people" ? <div className="scroll h-full px-4 pb-10 pt-4"><People cid={c.id} ids={c.members} size={c.size} hosts={c.hosts} me hint={c.kind === "Alumni" ? "Name, company, city or class" : undefined} /></div> : <EventsTab c={c} />}
       </Place>
     </div>
   );
@@ -96,6 +98,7 @@ function GroupsTab({ c, now }: { c: Community; now: number }) {
     <div className="relative h-full">
       <LayoutGroup id={c.id}>
         <div className="scroll h-full px-4 pb-28 pt-4">
+          {isHost(s, c.id) && s.desk[c.id] && <DeskCard c={c} />}
           {c.biz && isHost(s, c.id) && s.movedIn[c.id] === undefined && (
             <button type="button" onClick={() => act.push({ t: "movein", id: c.id })} className="press mb-3 flex w-full items-center gap-3.5 rounded-[22px] bg-[var(--sun)] p-4 text-left"><Shop size={24} className="flex-none" /><span className="min-w-0 flex-1"><span className="block text-[16.5px] font-semibold leading-tight">Bring in your WhatsApp customers</span><span className="text-[14px]">They know you. Let them know each other.</span></span><ChevronRight size={20} className="flex-none" /></button>
           )}
@@ -271,7 +274,7 @@ function CaughtUp({ hue, ids, empty = false }: { hue: number; ids: string[]; emp
   );
 }
 
-export function People({ ids, size, hosts = [], me = false, hint }: { ids: string[]; size: number; hosts?: string[]; me?: boolean; hint?: string }) {
+export function People({ ids, size, hosts = [], me = false, hint, cid }: { ids: string[]; size: number; hosts?: string[]; me?: boolean; hint?: string; cid?: string }) {
   const { s, act } = useStore();
   const [q, setQ] = useState("");
   const [want, setWant] = useState<string | null>(null);
@@ -290,7 +293,7 @@ export function People({ ids, size, hosts = [], me = false, hint }: { ids: strin
           <button key={p.id} type="button" onClick={() => act.push({ t: "person", id: p.id })} className="press mb-2.5 flex w-full items-start gap-3.5 rounded-[20px] bg-[var(--card)] p-4 text-left">
             <Avatar id={p.id} size={48} />
             <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-2"><span className="text-[16.5px] font-semibold leading-tight">{p.name}</span>{hosts.includes(p.id) && <span className="rounded-full bg-[var(--brand-soft)] px-2 py-0.5 text-[12.5px] font-medium text-[var(--brand)]">Host</span>}</span>
+              <span className="flex items-center gap-2"><span className="text-[16.5px] font-semibold leading-tight">{p.name}</span>{hosts.includes(p.id) && <span className="rounded-full bg-[var(--brand-soft)] px-2 py-0.5 text-[12.5px] font-medium text-[var(--brand)]">Host</span>}{(() => { const st = cid ? standing(s.desk[cid]?.came[p.id]) : null; return st && st.tone !== "new" ? <span className="rounded-full px-2 py-0.5 text-[12.5px] font-medium" style={{ background: st.tone === "sun" ? "var(--sun)" : "var(--sunk)" }}>{st.label}</span> : null; })()}</span>
               <span className="block text-[14.5px] text-[var(--soft)]">{p.headline}, {p.city}</span>
               <span className="mt-2 flex flex-wrap gap-1.5">{p.intents.map((i) => <Tag key={i}>{i}</Tag>)}</span>
               {why.fits && <span className="mt-2 block text-[14px] font-medium text-[var(--brand)]">{why.line}</span>}
@@ -446,6 +449,12 @@ export function PostCard({ post: p, now, reason = null, from, onFrom }: { post: 
         {p.tag && <Tag on>{p.tag}</Tag>}
       </button>
       <p className="mt-3 text-[16px] leading-[1.5]">{p.text}</p>
+      {p.crew && (
+        <div className="mt-3 rounded-[18px] bg-[var(--ink)] p-4 text-white">
+          <div className="flex flex-wrap gap-1.5">{["me", ...p.crew].map((m, i) => <motion.span key={m} className="rounded-full ring-2 ring-[var(--sun)]" initial={{ scale: 0, rotate: -20 }} animate={{ scale: 1, rotate: 0 }} transition={{ ...spring, delay: 0.15 + i * 0.06 }}><Avatar id={m} size={40} /></motion.span>)}</div>
+          <p className="mt-3 flex items-baseline justify-between text-[14px]"><span className="font-semibold text-[var(--sun)]">{p.crew.length + 1} came</span><span className="text-white/70">{p.crew.includes("me") || p.by === "me" ? "You were there" : "The ones who turned up"}</span></p>
+        </div>
+      )}
       {p.poll && (
         <div className="mt-3 grid gap-2">
           {p.poll.options.map((o, i) => {
