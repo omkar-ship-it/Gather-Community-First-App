@@ -5,12 +5,13 @@ import { Bell, BellOff, CalendarPlus, Check, Hash, IndianRupee, LogOut, Megaphon
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
 import { GroupGlance } from "./Community";
+import { BuySheet, DropSheet, PassSheet, PaySheet } from "./Commerce";
 import type { Plan } from "@/lib/data";
 import { pretty, type Kind } from "@/lib/ids";
 import { byFit, count, day as dayOf, isHost, money, left, linkTo, maskEmail, maskMobile, openNow, pinOpen, waLink, what, useNow, useStore, when, type Sheet } from "@/lib/store";
 import { Avatar, Glyph, IdTiles, SheetShell, firstOf, nameOf, spring, Faces, GroupMark } from "./ui";
 
-const LABEL: Record<Sheet["t"], string> = { plus: "What would you like to do?", post: "New post", host: "Host an event", pay: "Get a seat", split: "Split a bill", comments: "Replies", key: "Pass the key", link: "", peek: "Look inside", group: "About this group", newgroup: "Start a group", ask: "Ask on WhatsApp", join: "Membership", about: "About", switch: "Switch group" };
+const LABEL: Record<Sheet["t"], string> = { plus: "What would you like to do?", post: "New post", host: "Host an event", pay: "Get a seat", split: "Split a bill", comments: "Replies", key: "Pass the key", link: "", peek: "Look inside", group: "About this group", newgroup: "Start a group", ask: "Ask on WhatsApp", join: "Membership", about: "About", switch: "Switch group", buy: "Buy", pass: "Your pass", drop: "Drop something" };
 
 export default function Sheets() {
   const { s, act } = useStore();
@@ -21,6 +22,9 @@ export default function Sheets() {
       {sh?.t === "post" && <PostSheet initial={sh.communityId} groupId={sh.groupId} announce={sh.announce} draft={sh.draft} />}
       {sh?.t === "host" && <HostSheet initial={sh.communityId} groupId={sh.groupId} />}
       {sh?.t === "pay" && <PaySheet id={sh.eventId} />}
+      {sh?.t === "buy" && <BuySheet id={sh.postId} />}
+      {sh?.t === "pass" && <PassSheet id={sh.eventId} />}
+      {sh?.t === "drop" && <DropSheet communityId={sh.communityId} />}
       {sh?.t === "split" && <SplitSheet />}
       {sh?.t === "comments" && <CommentsSheet id={sh.postId} />}
       {sh?.t === "key" && <KeySheet kind={sh.kind} id={sh.id} />}
@@ -266,36 +270,6 @@ function HostSheet({ initial, groupId }: { initial?: string; groupId?: string })
       <button type="button" role="switch" aria-checked={weekly} onClick={() => setWeekly(!weekly)} className="press mt-2.5 flex min-h-[50px] w-full items-center justify-between rounded-2xl bg-[var(--sunk)] px-4 text-[15.5px] font-medium">{weekly ? `Every ${weekday(day)}` : "Repeat every week"}<span className="flex h-7 w-12 items-center rounded-full p-1" style={{ background: weekly ? "var(--brand)" : "#cfc3cb", justifyContent: weekly ? "flex-end" : "flex-start" }}><motion.span layout transition={spring} className="h-5 w-5 rounded-full bg-white" /></span></button>
       <p className="mt-3 text-[14.5px] leading-snug text-[var(--soft)]">It gets a six-digit PIN an hour before. The room closes itself two hours after it starts.</p>
       <button type="button" className="btn btn-main mt-3 w-full" disabled={title.trim().length < 3 || place.trim().length < 2 || !where} onClick={() => { act.host(where, title.trim(), place.trim(), Number(price) || 0, day, to === "all" ? undefined : to, weekly ? `Every ${weekday(day)}` : undefined); act.say("Your event is up"); }}>Create event</button>
-    </>
-  );
-}
-
-function PaySheet({ id }: { id: string }) {
-  const { s, act } = useStore();
-  const e = s.events.find((x) => x.id === id)!;
-  const [how, setHow] = useState<"UPI" | "Card">("UPI");
-  const [state, setState] = useState<"ready" | "paying" | "done">("ready");
-  const pay = () => { setState("paying"); window.setTimeout(() => { setState("done"); navigator.vibrate?.([15, 40, 25]); act.ticket(id); }, 1300); };
-  if (state === "done")
-    return (
-      <div className="pb-2 text-center">
-        <motion.div initial={{ y: -60, rotate: -6, opacity: 0 }} animate={{ y: 0, rotate: -1.5, opacity: 1 }} transition={spring} className="mx-auto max-w-[19rem] rounded-[24px] bg-[var(--brand)] p-6 text-white">
-          <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-[var(--sun)] text-[var(--ink)]"><Check size={24} /></span>
-          <p className="mt-3 text-[20px] font-semibold leading-tight">{e.title}</p>
-          <p className="mt-1 text-[15px] text-white/80">{when(e.startsAt)}</p>
-          <div className="my-4 border-t-2 border-dashed border-white/30" />
-          <p className="text-[15px] leading-snug text-white/80">Your six-digit PIN arrives an hour before.</p>
-        </motion.div>
-        <button type="button" className="btn btn-main mt-5 w-full" onClick={() => act.sheet({ t: "key", kind: "room", id })}>Bring a friend</button>
-        <button type="button" className="mt-1 min-h-[44px] w-full text-[15px] text-[var(--soft)]" onClick={() => act.sheet(null)}>Done</button>
-      </div>
-    );
-  return (
-    <>
-      <div className="flex items-start justify-between gap-4"><div><p className="text-[17px] font-semibold leading-snug">{e.title}</p><p className="mt-0.5 text-[15px] text-[var(--soft)]">{when(e.startsAt)}</p></div><p className="digits flex-none text-[24px] font-medium">₹{e.price.toLocaleString("en-IN")}</p></div>
-      <div className="mt-5 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Pay with">{(["UPI", "Card"] as const).map((h) => <button key={h} type="button" role="radio" aria-checked={how === h} onClick={() => setHow(h)} className="press min-h-[56px] rounded-2xl text-[16px] font-semibold" style={{ border: `2px solid ${how === h ? "var(--brand)" : "var(--line)"}`, color: how === h ? "var(--brand)" : undefined }}>{h}</button>)}</div>
-      <button type="button" className="btn btn-main mt-4 w-full" disabled={state === "paying"} onClick={pay}>{state === "paying" ? "Paying" : `Pay ₹${e.price.toLocaleString("en-IN")}`}</button>
-      <p className="mt-3 text-center text-[14px] text-[var(--soft)]">Prototype: no money moves.</p>
     </>
   );
 }

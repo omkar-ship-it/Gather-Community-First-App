@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, animate, motion, useMotionValue, useTransform } from "framer-motion";
-import { Check, ChevronRight, DoorOpen, HeartHandshake, KeyRound, Megaphone, PartyPopper, Share2, Sparkles, Ticket } from "lucide-react";
+import { Check, ChevronRight, DoorOpen, HeartHandshake, KeyRound, Megaphone, Package, PartyPopper, ScanLine, Share2, Sparkles, Ticket } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Community } from "@/lib/data";
 import { rupees, standing } from "@/lib/host";
@@ -56,7 +56,7 @@ export function DeskCard({ c, compact = false }: { c: Community; compact?: boole
         <span className="block truncate text-[16.5px] font-semibold leading-tight">{compact ? c.name : "Your desk"}</span>
         <span className="block truncate text-[14px] text-white/75">{t.n ? t.line : "All clear. Nothing needs you."}</span>
       </span>
-      {t.n > 0 && <span className="digits grid h-7 min-w-7 flex-none place-items-center rounded-full bg-[var(--sun)] px-2 text-[14px] font-semibold text-[var(--ink)]">{t.n}</span>}
+      {t.n > 0 && <span className="num grid h-7 min-w-7 flex-none place-items-center rounded-full bg-[var(--sun)] px-2 text-[14px] font-semibold text-[var(--ink)]">{t.n}</span>}
       <ChevronRight size={20} className="flex-none text-white/60" />
     </button>
   );
@@ -66,13 +66,13 @@ function Rise({ to, format = (n: number) => count(n) }: { to: number; format?: (
   const v = useMotionValue(0);
   const text = useTransform(v, (n) => format(Math.round(n)));
   useEffect(() => { const a = animate(v, to, { duration: 1.1, ease: [0.22, 1, 0.36, 1] }); return () => a.stop(); }, [to, v]);
-  return <motion.span className="digits">{text}</motion.span>;
+  return <motion.span className="num">{text}</motion.span>;
 }
 
 function Section({ title, n, children }: { title: string; n?: number; children: React.ReactNode }) {
   return (
     <motion.section layout transition={spring} className="mt-6">
-      <h2 className="mb-2 flex items-center gap-2 px-1 text-[16px] font-semibold">{title}{n ? <span className="digits rounded-full bg-[var(--sun)] px-2 text-[13px]">{n}</span> : null}</h2>
+      <h2 className="mb-2 flex items-center gap-2 px-1 text-[16px] font-semibold">{title}{n ? <span className="num rounded-full bg-[var(--sun)] px-2 text-[13px]">{n}</span> : null}</h2>
       {children}
     </motion.section>
   );
@@ -177,7 +177,7 @@ export function DeskScreen({ id }: { id: string }) {
               </button>
               <div className="mt-3 flex items-center gap-3">
                 <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[var(--sunk)]"><motion.div className="h-full rounded-full bg-[var(--sun)]" initial={false} animate={{ width: `${Math.min(100, Math.max(4, (e.going.length / e.seats) * 100))}%` }} transition={spring} /></div>
-                <span className="digits flex-none text-[14px] font-medium">{e.going.length} of {e.seats}</span>
+                <span className="num flex-none text-[14px] font-medium">{e.going.length} of {e.seats}</span>
               </div>
               {invite.length > 0 && (
                 <div className="mt-3.5 flex items-center gap-3 rounded-[16px] bg-[var(--brand-soft)] p-3">
@@ -231,7 +231,10 @@ export function DeskScreen({ id }: { id: string }) {
           </motion.div>
         )}
 
-        <button type="button" onClick={() => act.sheet({ t: "post", communityId: id, announce: true })} className="press mt-6 flex w-full items-center gap-3 rounded-[20px] bg-[var(--card)] p-4 text-left"><Megaphone size={20} className="text-[var(--brand)]" /><span className="text-[15.5px] font-medium">Say something to everyone</span></button>
+        <div className="mt-6 overflow-hidden rounded-[20px] bg-[var(--card)]">
+          <button type="button" onClick={() => act.sheet({ t: "post", communityId: id, announce: true })} className="press flex w-full items-center gap-3 p-4 text-left"><Megaphone size={20} className="text-[var(--brand)]" /><span className="text-[15.5px] font-medium">Say something to everyone</span></button>
+          <button type="button" onClick={() => act.sheet({ t: "drop", communityId: id })} className="press flex w-full items-center gap-3 border-t border-[var(--line)] p-4 text-left"><Package size={20} className="text-[var(--brand)]" /><span className="min-w-0 flex-1"><span className="block text-[15.5px] font-medium">Drop something</span><span className="block text-[13.5px] text-[var(--soft)]">A tee, a mug, a tasting. Members buy in two taps.</span></span></button>
+        </div>
       </div>
     </div>
   );
@@ -246,15 +249,30 @@ export function DoorScreen({ id }: { id: string }) {
   const d = s.desk[c.id];
   const here = s.here[id] ?? [];
   const [missed, setMissed] = useState(true);
+  const [scan, setScan] = useState(false);
   const list = e.going.filter((m) => m !== "me");
   const first = (m: string) => (d?.came[m] ?? 0) === 0;
   const order = [...list].sort((a, b) => Number(first(b)) - Number(first(a)));
   const no = list.length - here.length;
   return (
     <div className="flex h-full flex-col bg-[var(--ink)] text-white">
-      <Bar dark title={e.title} sub={e.place} />
+      <Bar dark title={e.title} sub={e.place} right={<button type="button" disabled={scan || here.length === list.length} onClick={() => {
+        const next = order.find((m) => !here.includes(m));
+        if (!next) return;
+        setScan(true);
+        window.setTimeout(() => { setScan(false); navigator.vibrate?.(12); act.arrived(id, next); act.say(`${firstOf(next)}'s pass, checked in`); }, 1100);
+      }} className="press mr-3 flex min-h-[40px] items-center gap-1.5 rounded-full bg-white/12 px-3.5 text-[14px] font-medium disabled:opacity-40"><ScanLine size={17} />Scan a pass</button>} />
+      <AnimatePresence>
+        {scan && (
+          <motion.div className="absolute inset-0 z-20 grid place-items-center bg-black/70" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <div className="relative h-56 w-56 rounded-[28px] border-2 border-white/70">
+              <motion.span className="absolute inset-x-3 h-[2px] rounded-full bg-[var(--sun)] shadow-[0_0_16px_var(--sun)]" initial={{ top: 12 }} animate={{ top: 208 }} transition={{ duration: 0.9, ease: "easeInOut" }} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <div className="flex-none px-5 pb-4 text-center">
-        <motion.p key={here.length} initial={{ scale: 1.25 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 500, damping: 18 }} className="digits text-[64px] font-semibold leading-none tracking-[-0.04em] text-[var(--sun)]">{here.length + 1}</motion.p>
+        <motion.p key={here.length} initial={{ scale: 1.25 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 500, damping: 18 }} className="num text-[64px] font-semibold leading-none tracking-[-0.04em] text-[var(--sun)]">{here.length + 1}</motion.p>
         <p className="mt-1 text-[15px] text-white/75">here, counting you. {list.length - here.length > 0 ? `${list.length - here.length} still on the way.` : "Everyone came."}</p>
       </div>
       <div className="scroll flex-1 px-4 pb-6">
@@ -303,7 +321,7 @@ export function Milestone() {
             return <motion.span key={pid} className="absolute rounded-full ring-[3px] ring-white/30" initial={{ x: 0, y: 0, scale: 0 }} animate={{ x: Math.cos(a) * 150, y: Math.sin(a) * 210, scale: 1 }} transition={{ ...spring, delay: 0.25 + i * 0.05 }}><Avatar id={pid} size={40} /></motion.span>;
           })}
           <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 16, delay: 0.1 }} className="relative">
-            <p className="digits text-[96px] font-semibold leading-none tracking-[-0.05em] text-[var(--sun)]"><Rise to={m.n} /></p>
+            <p className="num text-[96px] font-semibold leading-none tracking-[-0.05em] text-[var(--sun)]"><Rise to={m.n} /></p>
             <p className="mt-3 text-[22px] font-semibold leading-tight">{c.name} is {m.n} people</p>
             <p className="mt-1 text-[15px] text-white/80">Every one of them let in by someone.</p>
           </motion.div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { COMMUNITIES, FITS, GROUPS, PEOPLE, makeEvents, makePosts, makeThreads, uid, type Biz, type CKind, type Community, type Event, type Group, type Me, type Msg, type Person, type Plan, type Post } from "./data";
+import { COMMUNITIES, FITS, GROUPS, PEOPLE, makeEvents, makePosts, makeThreads, uid, type Biz, type CKind, type Community, type Drop, type Event, type Group, type Me, type Msg, type Person, type Plan, type Post } from "./data";
 import type { Offer } from "./numbers";
 import { checks, pretty, specOf, type Kind } from "./ids";
 import { DESKS, milestone, type DeskSeed } from "./host";
@@ -47,6 +47,9 @@ export type Sheet =
   | { t: "ask"; communityId: string; about?: string }
   | { t: "host"; communityId?: string; groupId?: string }
   | { t: "pay"; eventId: string }
+  | { t: "buy"; postId: string }
+  | { t: "pass"; eventId: string }
+  | { t: "drop"; communityId: string }
   | { t: "split" }
   | { t: "comments"; postId: string }
   | { t: "key"; kind: Kind; id: string }
@@ -112,6 +115,8 @@ type State = {
   desk: Record<string, Desk>;
   /** Who's been ticked in at the door, by event. */
   here: Record<string, string[]>;
+  /** Drops bought, by post. */
+  bought: string[];
   /** Events whose roll call has gone out. */
   called: string[];
   /** A round number just reached: everything stops for it. */
@@ -129,6 +134,7 @@ function fresh(): State {
   return {
     desk: Object.fromEntries(Object.entries(DESKS).map(([k, v]) => [k, { ...structuredClone(v), invited: [], keyed: false }])),
     here: {},
+    bought: [],
     called: [],
     milestone: null,
     me: null, pending: null, auth: "welcome", dial: link.length > 0 || Boolean(arrive), dialWith: link, arrive, doors: {}, contact: { mobile: "", email: "" }, held: null, lapsed: null, arrival: null, asked: [], tab: "communities", stack: [], sheet: null, toast: null, spot: {}, nudge: null, sending: null, mutual: [], meet: null, thanks: 0, movedIn: {}, paid: {}, askedGroups: [], moments: false, caughtUp: false,
@@ -283,7 +289,7 @@ function useStoreValue() {
         }));
       },
 /** Publish, then let it be felt: hearts arrive, and the person it matters to answers. */
-      post: (communityId: string, text: string, to: { groupId?: string; announce?: boolean; tag?: string; crew?: string[]; stay?: boolean } = {}) => {
+      post: (communityId: string, text: string, to: { groupId?: string; announce?: boolean; tag?: string; crew?: string[]; drop?: Drop; stay?: boolean } = {}) => {
         const id = uid();
         const out = 2100;
         patch((x) => {
@@ -291,7 +297,7 @@ function useStoreValue() {
           const g = x.groups.find((v) => v.id === to.groupId);
           return { sheet: null, sending: { hue: c.hue, label: to.announce ? `Everyone in ${c.name}` : (g?.name ?? c.name), reach: g?.size ?? c.size, faces: byFit(x, g?.members ?? c.members).slice(0, 7) } };
         });
-        later(out - 500, () => patch((x) => ({ ...(to.stay ? {} : stand(x, communityId, to.groupId, "feed")), posts: [{ id, communityId, groupId: to.groupId, announce: to.announce, tag: to.tag, crew: to.crew, by: "me", at: Date.now(), text, likes: 0, liked: false, comments: [], ...(to.announce ? { seen: 1 } : {}) }, ...x.posts] })));
+        later(out - 500, () => patch((x) => ({ ...(to.stay ? {} : stand(x, communityId, to.groupId, "feed")), posts: [{ id, communityId, groupId: to.groupId, announce: to.announce, tag: to.tag, crew: to.crew, drop: to.drop, by: "me", at: Date.now(), text, likes: 0, liked: false, comments: [], ...(to.announce ? { seen: 1 } : {}) }, ...x.posts] })));
         later(out, () => patch(() => ({ sending: null })));
         const bump = (f: (p: Post, x: State) => Post) => patch((x) => ({ posts: x.posts.map((p) => (p.id === id ? f(p, x) : p)) }));
         [1600, 2300, 3400, 4100, 5600].forEach((ms) => later(out + ms, () => bump((p) => ({ ...p, likes: p.likes + 1 }))));
@@ -373,6 +379,10 @@ function useStoreValue() {
         say(`${person(pid)?.name.split(" ")[0]} hears “not right now”, kindly`);
       },
       quietMilestone: () => patch(() => ({ milestone: null })),
+      /** Paid for a drop: one fewer left, and it's yours. */
+      buy: (postId: string) => patch((x) => ({ bought: [...x.bought, postId], posts: x.posts.map((p) => (p.id === postId && p.drop ? { ...p, drop: { ...p.drop, left: Math.max(0, p.drop.left - 1) } } : p)) })),
+      /** A host puts a few of something on sale. */
+      makeDrop: (cid: string, text: string, drop: Drop) => { api.post(cid, text, { tag: "Drop", drop }); },
       /** Everyone new this week, welcomed by name in one post. */
       welcome: (cid: string, text: string) => {
         patch((x) => ({ desk: { ...x.desk, [cid]: { ...x.desk[cid], fresh: [] } } }));

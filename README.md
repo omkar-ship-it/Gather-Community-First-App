@@ -55,6 +55,14 @@ A host's week is the same five jobs in a run club, a gym, a cafe or an alumni ne
 
 In the demo you co-host Sunday Runners (run club) and own Corner Table Club (cafe). Both desks are also on Home.
 
+## Money (`lib/money.ts`, `components/Commerce.tsx`)
+
+There is one checkout for everything: a seat, a mug or a tee. It shows the price, a convenience fee and the total, lets you choose GPay, PhonePe, Paytm or Card, and has one Pay button. The fee is a placeholder (2%, at least ₹5, nothing on free events) set in `lib/money.ts`.
+
+- **Drops:** a host posts a small batch of something with *Drop something* on the desk. Members see how many are left and buy in two taps. The receipt is numbered ("No. 34 of 40") and says where to collect it. Hosts see what's been sold so far.
+- **Passes:** a paid or confirmed event gives you a pass with a QR code, your number, the room PIN once it opens, and the venue on a map. It's on the event page and inside the live room. In door mode the host can *Scan a pass*; the scan is simulated.
+- **Social proof:** event rows say how many going "you know", meaning people you kept or who share another community with you.
+
 ## WhatsApp Business
 
 A host brings a WhatsApp audience in without connecting anything (`components/MoveIn.tsx`): WhatsApp opens with the invite written, they pick their broadcast list and press send. Customers ask the business questions back on WhatsApp. Arrivals are simulated. Share links (`/c/<number>`, `/e/<event>`) carry their own preview image (`lib/card.tsx`).

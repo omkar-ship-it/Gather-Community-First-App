@@ -7,6 +7,7 @@ import { INTENTS, type Community, type Event, type Group, type Post } from "@/li
 import { ago, announcements, byFit, count, day, feedFor, fitsMe, isHost, latest, openGroups, openNow, overlap, person, useNow, useStore, what, when } from "@/lib/store";
 import { Avatar, Bar, Faces, Glyph, GroupMark, Tag, Unread, firstOf, nameOf, rectOf, spring } from "./ui";
 import { DeskCard } from "./Host";
+import { DropCard, known } from "./Commerce";
 import { standing } from "@/lib/host";
 
 // ------------------------------------------------------------ the shape every place shares
@@ -410,14 +411,15 @@ export function EventRow({ e, compact = false, showGroup = true }: { e: Event; c
   const d = new Date(e.startsAt);
   const going = byFit(s, e.going);
   const n = e.inside + (e.ticket ? 1 : 0);
+  const k = known(s, e).length;
   return (
     <div className={`flex items-center gap-2 rounded-[20px] bg-[var(--card)] pr-3 ${compact ? "mb-3" : "mb-2.5"}`}>
       <button type="button" onClick={() => act.push(live && e.ticket ? { t: "room", id: e.id } : { t: "event", id: e.id })} className="press flex min-w-0 flex-1 items-center gap-3.5 py-3.5 pl-3.5 text-left">
-        <span className="flex h-[54px] w-[48px] flex-none flex-col items-center justify-center rounded-[15px]" style={{ background: live ? "var(--live)" : "var(--sunk)", color: live ? "#fff" : "var(--ink)" }}><span className="text-[12px] leading-none opacity-80">{live ? "Now" : d.toLocaleString("en-IN", { month: "short" })}</span><span className="digits mt-1 text-[19px] leading-none">{d.getDate()}</span></span>
+        <span className="flex h-[54px] w-[48px] flex-none flex-col items-center justify-center rounded-[15px]" style={{ background: live ? "var(--live)" : "var(--sunk)", color: live ? "#fff" : "var(--ink)" }}><span className="text-[12px] leading-none opacity-80">{live ? "Now" : d.toLocaleString("en-IN", { month: "short" })}</span><span className="num mt-1 text-[19px] font-semibold leading-none">{d.getDate()}</span></span>
         <span className="min-w-0 flex-1">
           <span className="line-clamp-2 block text-[16px] font-semibold leading-snug">{e.title}</span>
           <span className="block truncate text-[14px] text-[var(--soft)]">{live ? "On now" : e.repeats ? `${e.repeats}, ${d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}` : when(e.startsAt)}{showGroup && g && !compact ? `, ${g.name}` : ""}</span>
-          <span className="mt-1.5 flex items-center gap-2"><Faces ids={[...(e.ticket ? ["me"] : []), ...going].slice(0, 4)} size={22} /><span className="text-[13.5px] text-[var(--soft)]">{count(n)} going</span></span>
+          <span className="mt-1.5 flex items-center gap-2"><Faces ids={[...(e.ticket ? ["me"] : []), ...going].slice(0, 4)} size={22} /><span className="text-[13.5px] text-[var(--soft)]">{count(n)} going{k ? <>, <span className="font-medium text-[var(--brand)]">{k} you know</span></> : null}</span></span>
         </span>
       </button>
       {live ? <button type="button" onClick={() => (e.ticket ? act.push({ t: "room", id: e.id }) : act.push({ t: "event", id: e.id }))} className="press min-h-[42px] flex-none rounded-full bg-[var(--live)] px-4 text-[14px] font-semibold text-white">{e.ticket ? "Walk in" : "See"}</button>
@@ -449,6 +451,7 @@ export function PostCard({ post: p, now, reason = null, from, onFrom }: { post: 
         {p.tag && <Tag on>{p.tag}</Tag>}
       </button>
       <p className="mt-3 text-[16px] leading-[1.5]">{p.text}</p>
+      {p.drop && <DropCard p={p} />}
       {p.crew && (
         <div className="mt-3 rounded-[18px] bg-[var(--ink)] p-4 text-white">
           <div className="flex flex-wrap gap-1.5">{["me", ...p.crew].map((m, i) => <motion.span key={m} className="rounded-full ring-2 ring-[var(--sun)]" initial={{ scale: 0, rotate: -20 }} animate={{ scale: 1, rotate: 0 }} transition={{ ...spring, delay: 0.15 + i * 0.06 }}><Avatar id={m} size={40} /></motion.span>)}</div>

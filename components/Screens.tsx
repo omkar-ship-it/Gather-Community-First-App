@@ -1,12 +1,13 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Bookmark, BookmarkCheck, MapPin, Send, Share2 } from "lucide-react";
+import { Bookmark, BookmarkCheck, MapPin, Send, Share2, Ticket } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useRef, useState } from "react";
 import type { Event } from "@/lib/data";
 import { pretty } from "@/lib/ids";
 import { byFit, count, left, linkTo, maskEmail, maskMobile, overlap, person, pinOpen, stranger, useNow, useStore, when } from "@/lib/store";
+import { known } from "./Commerce";
 import { Doors } from "./Peaks";
 import { Avatar, Bar, Glyph, IdTiles, Tag, firstOf, nameOf, spring } from "./ui";
 
@@ -180,7 +181,7 @@ export function EventScreen({ id }: { id: string }) {
         <p className="mt-0.5 text-[15.5px] text-[var(--soft)]">{e.place}</p>
         <p className="mt-4 text-[16px] leading-[1.5]">{e.blurb}</p>
         <section className="mt-5 rounded-[24px] bg-[var(--card)] p-5">
-          <div className="flex items-center justify-between"><h2 className="text-[16px] font-semibold">{count(e.inside + (e.ticket ? 1 : 0))} going</h2><span className="text-[14px] text-[var(--soft)]">{count(Math.max(0, e.seats - e.inside - (e.ticket ? 1 : 0)))} seats left</span></div>
+          <div className="flex items-center justify-between"><h2 className="text-[16px] font-semibold">{count(e.inside + (e.ticket ? 1 : 0))} going{known(s, e).length ? <span className="font-medium text-[var(--brand)]">, {known(s, e).length} you know</span> : null}</h2><span className="text-[14px] text-[var(--soft)]">{count(Math.max(0, e.seats - e.inside - (e.ticket ? 1 : 0)))} seats left</span></div>
           <div className="mt-3 flex flex-wrap gap-2.5">{e.ticket && <Avatar id="me" size={44} />}{e.going.map((m) => <button key={m} type="button" aria-label={nameOf(m)} className="press" onClick={() => act.push({ t: "person", id: m })}><Avatar id={m} size={44} /></button>)}</div>
         </section>
         <section className="mt-3 rounded-[24px] border-2 border-dashed border-[var(--line)] p-5">
@@ -191,7 +192,7 @@ export function EventScreen({ id }: { id: string }) {
       </div>
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[var(--bg)] via-[var(--bg)] to-transparent px-5 pb-[max(env(safe-area-inset-bottom),18px)] pt-8">
         {live && e.ticket ? <button type="button" className="btn btn-main w-full" onClick={() => act.push({ t: "room", id })}>Walk in</button>
-          : e.ticket ? <p className="rounded-2xl bg-[var(--brand-soft)] py-4 text-center text-[16px] font-semibold text-[var(--brand)]">You&apos;re going</p>
+          : e.ticket ? <button type="button" className="btn btn-sun w-full" onClick={() => act.sheet({ t: "pass", eventId: id })}><Ticket size={18} />You&apos;re going. See your pass</button>
           : <button type="button" className="btn btn-main w-full" onClick={() => (e.price ? act.sheet({ t: "pay", eventId: id }) : (act.ticket(id), act.say("You're going")))}>{e.price ? `Get a seat, ₹${e.price.toLocaleString("en-IN")}` : "I'm going"}</button>}
       </div>
     </div>
@@ -215,7 +216,7 @@ export function RoomScreen({ id }: { id: string }) {
       <AnimatePresence>
         {over ? <Dissolved key="over" e={e} /> : (
           <motion.div key="room" className="flex min-h-0 flex-1 flex-col" exit={{ opacity: 0, filter: "blur(18px)", scale: 1.06 }} transition={{ duration: 1.1 }} animate={{ opacity: last ? Math.max(0.35, ms / 13_000) : 1 }}>
-            <Bar dark title={e.title.split(":")[0]} sub={`${count(e.inside + 1)} inside`} right={<span className="digits mr-4 rounded-full px-3.5 py-1.5 text-[17px] font-medium" style={{ background: closing ? "var(--live)" : "rgba(255,255,255,0.12)" }} role="timer" aria-label="Time left">{left(ms)}</span>} />
+            <Bar dark title={e.title.split(":")[0]} sub={`${count(e.inside + 1)} inside`} right={<span className="mr-3 flex items-center gap-1"><button type="button" aria-label="Your pass" className="press grid h-10 w-10 place-items-center rounded-full bg-white/10" onClick={() => act.sheet({ t: "pass", eventId: id })}><Ticket size={18} /></button><span className="digits rounded-full px-3.5 py-1.5 text-[17px] font-medium" style={{ background: closing ? "var(--live)" : "rgba(255,255,255,0.12)" }} role="timer" aria-label="Time left">{left(ms)}</span></span>} />
             <div className="scroll flex flex-none gap-3 overflow-x-auto px-5 pb-3 pt-1">
               {order.map((m, i) => (
                 <motion.button key={m} type="button" onClick={() => act.push({ t: "person", id: m })} initial={{ scale: 0, y: 24 }} animate={{ scale: 1, y: 0 }} transition={{ ...spring, delay: 0.12 + i * 0.08 }} className="relative flex w-[74px] flex-none flex-col items-center">
